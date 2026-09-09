@@ -119,11 +119,19 @@ ar_pipeline/
   review/    app.py  web/  auth.py
   deliver/   deliverer.py  backend_client.py
   schema/    canonical.py
-  db/        models.py  migrations/
+  db/        base.py  models.py
   worker.py  config.py
+migrations/    Alembic (repo root — Alembic convention)
 stub_backend/  app.py
 tests/
 ```
+
+> Amendments during implementation (Foundation plan, 2026-09-09):
+> Alembic migrations live at repo-root `migrations/`, not `ar_pipeline/db/migrations/`.
+> Local dev + tests use the `pgserver` package (embedded PostgreSQL) because the
+> build host has no Docker; production still targets a managed Postgres.
+> `Settings.database_url` is required (no default) — fail fast on misconfig.
+> `graph_client_secret` and `backend_auth_header` are `SecretStr`.
 
 ## Modules
 

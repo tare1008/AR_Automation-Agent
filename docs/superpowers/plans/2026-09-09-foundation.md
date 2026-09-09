@@ -6,14 +6,18 @@
 
 **Architecture:** One Python package `ar_pipeline` (FastAPI app + in-process APScheduler worker) plus a separate `stub_backend` FastAPI app. Sync SQLAlchemy 2.0 over Postgres, Alembic migrations. The canonical schema is a Pydantic model that generates JSON Schema; it is the single source of truth shared by normalization, the review UI, and the stub backend.
 
-**Tech Stack:** Python 3.12, uv (packaging), FastAPI, uvicorn, SQLAlchemy 2.0 (sync) + psycopg 3, Alembic, Pydantic 2 + pydantic-settings, APScheduler 3, pytest + httpx, Docker Compose (local Postgres).
+**Tech Stack:** Python 3.12, uv (packaging), FastAPI, uvicorn, SQLAlchemy 2.0 (sync) + psycopg 3, Alembic, Pydantic 2 + pydantic-settings, APScheduler 3, pytest + httpx, `pgserver` (embedded PostgreSQL 16 for local dev + tests — no Docker on this machine).
+
+**Environment note:** This machine has `uv` but **no Docker and no system PostgreSQL**, and no passwordless sudo. Local dev and the test suite use the `pgserver` PyPI package, which bundles PostgreSQL 16 binaries and runs a private instance over a Unix socket under `.pgdata/`. Production still targets a managed Postgres (per the spec) — `pgserver` is dev/test only.
 
 **Spec:** `docs/superpowers/specs/2026-09-09-ar-email-extraction-design.md`
 
 ## Global Constraints
 
 - Python 3.12; manage deps with `uv` (`uv add`, `uv run`).
+- Local dev + tests use `pgserver` (embedded PostgreSQL) — never assume Docker or a `localhost:5432` server. The test suite starts its own instance; no external DB setup.
 - Sync SQLAlchemy only — no async engine/session in this project.
+- No import-time database connections: `ar_pipeline/db/base.py` exposes lazy accessors (`get_engine()`, `get_session()`), never a module-level `engine` built at import.
 - Currency default is `INR`; the `currency` field is a 3-letter ISO-4217 string.
 - All monetary amounts are `Decimal` in Python / `NUMERIC` in Postgres — never `float`.
 - Primary keys are UUID v4.
@@ -29,7 +33,7 @@
 - Create: `pyproject.toml`
 - Create: `.gitignore`
 - Create: `.python-version`
-- Create: `docker-compose.yml`
+- Create: `scripts/dev_db.py`
 - Create: `README.md`
 - Create: `ar_pipeline/__init__.py`
 - Create: `stub_backend/__init__.py`
@@ -38,7 +42,7 @@
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: a working `uv` project where `uv run pytest` passes; a local Postgres via `docker compose up -d db` on `localhost:5432`.
+- Produces: a working `uv` project where `uv run pytest` passes; `uv run python scripts/dev_db.py` prints a ready-to-use `DATABASE_URL` for an embedded `pgserver` instance under `.pgdata/`.
 
 - [ ] **Step 1: Create `pyproject.toml`**
 
@@ -63,11 +67,14 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    "pytest-asyncio>=0.24",
+    "pgserver>=0.1.4",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["hatchling"]
@@ -84,7 +91,7 @@ packages = ["ar_pipeline", "stub_backend"]
 3.12
 ```
 
-`.gitignore`:
+`.gitignore` (note: the repo root `.gitignore` already lists most of these from an earlier commit — ensure the file ends up with at least this set, `.pgdata/` included):
 ```
 __pycache__/
 *.pyc
@@ -95,23 +102,50 @@ htmlcov/
 *.egg-info/
 .env
 data/blob/
+.pgdata/
+.superpowers/
+.worktrees/
 ```
 
-`docker-compose.yml`:
-```yaml
-services:
-  db:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ar
-      POSTGRES_PASSWORD: ar
-      POSTGRES_DB: ar_pipeline
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-volumes:
-  pgdata:
+`scripts/dev_db.py` — starts (or reuses) an embedded Postgres and ensures the app + test databases exist:
+```python
+"""Start a local embedded PostgreSQL (pgserver) for development.
+
+Prints a DATABASE_URL you can export. The data lives under .pgdata/ and
+persists between runs; delete that directory to reset.
+"""
+
+from __future__ import annotations
+
+import pathlib
+
+import pgserver
+
+PGDATA = pathlib.Path(__file__).resolve().parent.parent / ".pgdata"
+
+
+def ensure_server() -> pgserver.PostgresServer:
+    PGDATA.mkdir(exist_ok=True)
+    server = pgserver.get_server(str(PGDATA))
+    for name in ("ar_pipeline", "ar_pipeline_test"):
+        exists = server.psql(
+            f"SELECT 1 FROM pg_database WHERE datname = '{name}'"
+        ).strip()
+        if "1" not in exists:
+            server.psql(f"CREATE DATABASE {name}")
+    return server
+
+
+def uri_for(server: pgserver.PostgresServer, database: str) -> str:
+    return server.get_uri(database=database).replace(
+        "postgresql://", "postgresql+psycopg://", 1
+    )
+
+
+if __name__ == "__main__":
+    srv = ensure_server()
+    print("DATABASE_URL=" + uri_for(srv, "ar_pipeline"))
+    print("TEST_DATABASE_URL=" + uri_for(srv, "ar_pipeline_test"))
 ```
 
 `README.md`:
@@ -120,7 +154,12 @@ volumes:
 
 ## Setup
     uv sync
-    docker compose up -d db
+
+This machine has no Docker; local Postgres is an embedded `pgserver`
+instance (bundled binaries, Unix socket under `.pgdata/`). The test
+suite starts its own instance automatically. For a dev DB:
+
+    eval "$(uv run python scripts/dev_db.py | sed 's/^/export /')"
     uv run alembic upgrade head
 
 ## Test
@@ -277,6 +316,19 @@ def test_currency_must_be_three_letters():
         RemittancePayload.model_validate(bad)
 
 
+def test_currency_rejects_non_alphabetic():
+    bad = _valid_payload_dict()
+    bad["header"]["currency"] = "1N5"
+    with pytest.raises(ValidationError):
+        RemittancePayload.model_validate(bad)
+
+
+def test_currency_is_uppercased():
+    d = _valid_payload_dict()
+    d["header"]["currency"] = "inr"
+    assert RemittancePayload.model_validate(d).header.currency == "INR"
+
+
 def test_json_schema_is_dict_with_defs():
     assert isinstance(CANONICAL_JSON_SCHEMA, dict)
     assert CANONICAL_JSON_SCHEMA["title"] == "RemittancePayload"
@@ -301,10 +353,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
-from typing_extensions import Annotated
+from typing import Annotated
 
-_Currency = Annotated[str, StringConstraints(min_length=3, max_length=3, to_upper=True)]
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+_Currency = Annotated[
+    str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)
+]
 
 
 class Envelope(BaseModel):
@@ -376,7 +431,7 @@ Create empty `tests/schema/__init__.py`.
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/schema/test_canonical.py -v`
-Expected: PASS (6 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -512,8 +567,10 @@ git commit -m "feat: settings/config"
 - Consumes: `ar_pipeline.config.get_settings`.
 - Produces:
   - `ar_pipeline.db.base.Base` — declarative base.
-  - `ar_pipeline.db.base.engine`, `ar_pipeline.db.base.SessionLocal` — sync engine + sessionmaker bound to `database_url`.
-  - `ar_pipeline.db.base.get_session()` — context-manager yielding a `Session`.
+  - `ar_pipeline.db.base.get_engine()` — lazily-created (`lru_cache`) sync engine bound to `get_settings().database_url`. No engine is built at import time.
+  - `ar_pipeline.db.base.get_sessionmaker()` — lazily-created `sessionmaker`.
+  - `ar_pipeline.db.base.get_session()` — context-manager yielding a `Session` (commits on success, rolls back on exception).
+  - `ar_pipeline.db.base.reset_engine()` — disposes and clears the cached engine/sessionmaker (used by tests after changing env).
   - ORM models in `ar_pipeline.db.models`: `PollState`, `Email`, `Attachment`, `ExtractionSource`, `RawExtraction`, `Extraction`, `ExtractionEdit`, `Delivery`, `Vendor`.
   - Status string constants: `EMAIL_STATUSES = ("new","classified","extracted","normalized","review","done","error")`, `EXTRACTION_STATUSES = ("pending_review","approved","rejected")`, `DELIVERY_STATUSES = ("pending","delivered","failed")`.
   - pytest fixture `db_session` (function-scoped, rolls back after each test).
@@ -620,8 +677,10 @@ def test_attachment_belongs_to_email(db_session):
 `ar_pipeline/db/base.py`:
 ```python
 from contextlib import contextmanager
+from functools import lru_cache
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from ar_pipeline.config import get_settings
@@ -631,13 +690,28 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(get_settings().database_url, future=True)
-SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    return create_engine(get_settings().database_url, future=True)
+
+
+@lru_cache(maxsize=1)
+def get_sessionmaker() -> sessionmaker:
+    return sessionmaker(bind=get_engine(), expire_on_commit=False, class_=Session)
+
+
+def reset_engine() -> None:
+    """Dispose and forget the cached engine — for tests that change env."""
+    try:
+        get_engine().dispose()
+    finally:
+        get_engine.cache_clear()
+        get_sessionmaker.cache_clear()
 
 
 @contextmanager
 def get_session():
-    session = SessionLocal()
+    session = get_sessionmaker()()
     try:
         yield session
         session.commit()
@@ -650,9 +724,21 @@ def get_session():
 
 `ar_pipeline/db/__init__.py`:
 ```python
-from ar_pipeline.db.base import Base, SessionLocal, engine, get_session
+from ar_pipeline.db.base import (
+    Base,
+    get_engine,
+    get_session,
+    get_sessionmaker,
+    reset_engine,
+)
 
-__all__ = ["Base", "SessionLocal", "engine", "get_session"]
+__all__ = [
+    "Base",
+    "get_engine",
+    "get_session",
+    "get_sessionmaker",
+    "reset_engine",
+]
 ```
 
 - [ ] **Step 3: Write the models**
@@ -841,19 +927,58 @@ class Vendor(Base):
 
 - [ ] **Step 4: Write the test fixtures**
 
-`tests/conftest.py`:
+`tests/conftest.py` — a session-scoped, autouse fixture starts one embedded
+Postgres for the whole run and points the app's settings at it **before**
+any code reads `get_settings()`:
 ```python
+import os
+import pathlib
+
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
-from ar_pipeline.config import get_settings
-from ar_pipeline.db.base import Base
-from ar_pipeline.db import models  # noqa: F401  (register mappers)
+PGDATA = pathlib.Path(__file__).resolve().parent.parent / ".pgdata"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _embedded_pg():
+    import pgserver
+
+    PGDATA.mkdir(exist_ok=True)
+    server = pgserver.get_server(str(PGDATA))
+    for name in ("ar_pipeline", "ar_pipeline_test"):
+        exists = server.psql(
+            f"SELECT 1 FROM pg_database WHERE datname = '{name}'"
+        ).strip()
+        if "1" not in exists:
+            server.psql(f"CREATE DATABASE {name}")
+
+    def uri(database: str) -> str:
+        return server.get_uri(database=database).replace(
+            "postgresql://", "postgresql+psycopg://", 1
+        )
+
+    os.environ["DATABASE_URL"] = uri("ar_pipeline")
+    os.environ["TEST_DATABASE_URL"] = uri("ar_pipeline_test")
+
+    from ar_pipeline.config import get_settings
+    from ar_pipeline.db.base import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+
+    yield server
+    # leave the server running for reuse across local runs; pgserver
+    # reference-counts and cleans up when no processes remain.
 
 
 @pytest.fixture(scope="session")
-def _test_engine():
+def _test_engine(_embedded_pg):
+    from ar_pipeline.config import get_settings
+    from ar_pipeline.db.base import Base
+    from ar_pipeline.db import models  # noqa: F401  (register mappers)
+
     engine = create_engine(get_settings().test_database_url, future=True)
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
@@ -876,21 +1001,26 @@ def db_session(_test_engine):
 
 Create empty `tests/db/__init__.py`.
 
-- [ ] **Step 5: Create the test database, run tests**
+> Note for the implementer: confirm the `pgserver` API against the installed
+> version (`uv run python -c "import pgserver, inspect; print([n for n in dir(pgserver)])"`).
+> `get_server(datadir)` and `PostgresServer.get_uri(database=...)` / `.psql(sql)`
+> are expected; if `get_uri` has no `database` kwarg, build the URI by
+> swapping the trailing `/postgres` path segment while keeping the
+> `?host=<socket dir>` query string.
 
-Run:
-```bash
-docker compose up -d db
-uv run python -c "import psycopg; psycopg.connect('postgresql://ar:ar@localhost:5432/ar_pipeline').close()"
-docker compose exec -T db psql -U ar -d ar_pipeline -c "CREATE DATABASE ar_pipeline_test;" || true
-uv run pytest tests/db/test_models.py -v
-```
+- [ ] **Step 5: Run tests**
+
+The `_embedded_pg` fixture creates the databases automatically — no external setup.
+
+Run: `uv run pytest tests/db/test_models.py -v`
 Expected: PASS (4 tests)
+
+If `pgserver` fails to start (first run downloads/extracts bundled binaries — allow a minute), run `uv run python scripts/dev_db.py` once and re-run.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add ar_pipeline/db tests/conftest.py tests/db
+git add ar_pipeline/db tests/conftest.py tests/db pyproject.toml uv.lock
 git commit -m "feat: database models and test fixtures"
 ```
 
@@ -969,32 +1099,37 @@ else:
 
 Run:
 ```bash
-docker compose up -d db
+eval "$(uv run python scripts/dev_db.py | sed 's/^/export /')"
 uv run alembic revision --autogenerate -m "initial" --rev-id 0001
 ```
-Open `migrations/versions/0001_initial.py` and confirm it creates all nine tables (`poll_state`, `email`, `attachment`, `extraction_source`, `raw_extraction`, `extraction`, `extraction_edit`, `delivery`, `vendor`) with the unique + check constraints. Fix by hand if autogenerate missed any check constraint.
+(`dev_db.py` prints `DATABASE_URL=...` / `TEST_DATABASE_URL=...`; `eval` exports both so `migrations/env.py` — which reads `get_settings().database_url` — points at the embedded Postgres.)
+
+Open `migrations/versions/0001_initial.py` and confirm it creates all nine tables (`poll_state`, `email`, `attachment`, `extraction_source`, `raw_extraction`, `extraction`, `extraction_edit`, `delivery`, `vendor`) with the unique + check constraints. Fix by hand if autogenerate missed any check constraint (Alembic often omits `CheckConstraint`s that were passed inline — add explicit `op.create_check_constraint(...)` calls and their `op.drop_constraint(...)` counterparts).
 
 - [ ] **Step 4: Write the migration round-trip test**
 
-`tests/db/test_migrations.py`:
+`tests/db/test_migrations.py` — depends on `_embedded_pg` so `DATABASE_URL`
+is exported into this process (and inherited by the alembic subprocesses):
 ```python
 import subprocess
 
 
-def test_migrations_upgrade_and_downgrade():
-    up = subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
+def _alembic(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["uv", "run", "alembic", *args],
         capture_output=True, text=True,
     )
+
+
+def test_migrations_upgrade_and_downgrade(_embedded_pg):
+    up = _alembic("upgrade", "head")
     assert up.returncode == 0, up.stderr
 
-    down = subprocess.run(
-        ["uv", "run", "alembic", "downgrade", "base"],
-        capture_output=True, text=True,
-    )
+    down = _alembic("downgrade", "base")
     assert down.returncode == 0, down.stderr
 
-    subprocess.run(["uv", "run", "alembic", "upgrade", "head"], check=True)
+    again = _alembic("upgrade", "head")
+    assert again.returncode == 0, again.stderr
 ```
 
 - [ ] **Step 5: Run the test**
@@ -1226,7 +1361,7 @@ async def test_get_missing_is_404(client):
     assert r.status_code == 404
 ```
 
-Add to `pyproject.toml` `[tool.pytest.ini_options]`: `asyncio_mode = "auto"`, and add `pytest-asyncio>=0.24` to the dev group (`uv add --dev pytest-asyncio`).
+(`pytest-asyncio` and `asyncio_mode = "auto"` were already added in Task 1 — nothing to change in `pyproject.toml` here. Verify with `grep asyncio_mode pyproject.toml`.)
 
 - [ ] **Step 2: Run test to verify it fails**
 
