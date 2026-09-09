@@ -2,7 +2,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ar_pipeline.extract.vision import AnthropicVisionExtractor, VisionRefused
+from ar_pipeline.extract.vision import (
+    AnthropicVisionExtractor,
+    VisionRefused,
+    VisionTruncated,
+)
 
 
 def _resp(text, stop="end_turn"):
@@ -34,6 +38,13 @@ def test_vision_raises_on_refusal():
     client = MagicMock()
     client.messages.create.return_value = _resp("", stop="refusal")
     with pytest.raises(VisionRefused):
+        AnthropicVisionExtractor(client=client).extract_image(b"x", "image/png")
+
+
+def test_vision_raises_on_truncation():
+    client = MagicMock()
+    client.messages.create.return_value = _resp("partial...", stop="max_tokens")
+    with pytest.raises(VisionTruncated):
         AnthropicVisionExtractor(client=client).extract_image(b"x", "image/png")
 
 

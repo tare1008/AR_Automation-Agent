@@ -20,6 +20,7 @@ def test_settings_reads_from_env(monkeypatch):
     assert s.database_url.endswith("/db")
     assert s.poll_interval_seconds == 300
     assert s.llm_provider == "anthropic"
+    assert s.llm_model == "claude-opus-5"
 
 
 def test_get_settings_is_cached(monkeypatch):

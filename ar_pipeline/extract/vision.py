@@ -28,6 +28,10 @@ class VisionRefused(Exception):
     """Raised when the model refuses to transcribe the image."""
 
 
+class VisionTruncated(Exception):
+    """Raised when the transcription hit the output token limit."""
+
+
 class VisionExtractor(Protocol):
     def extract_image(self, data: bytes, media_type: str) -> ExtractedContent: ...
 
@@ -61,12 +65,14 @@ class AnthropicVisionExtractor:
         ]
         response = self._get_client().messages.create(
             model=self._model,
-            max_tokens=8000,
+            max_tokens=16000,
             system=_SYSTEM,
             messages=[{"role": "user", "content": content}],
         )
         if response.stop_reason == "refusal":
             raise VisionRefused("model refused to transcribe the image")
+        if response.stop_reason == "max_tokens":
+            raise VisionTruncated("transcription hit the output token limit")
         text = "\n".join(b.text for b in response.content if b.type == "text")
         return ExtractedContent(
             text=text,
@@ -76,5 +82,4 @@ class AnthropicVisionExtractor:
 
 
 def get_vision_extractor() -> VisionExtractor:
-    get_settings()
-    return AnthropicVisionExtractor()
+    return AnthropicVisionExtractor(model=get_settings().llm_model)
