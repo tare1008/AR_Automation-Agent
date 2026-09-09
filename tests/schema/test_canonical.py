@@ -87,6 +87,20 @@ def test_currency_defaults_to_inr_and_uppercases():
     assert RemittancePayload.model_validate(d).header.currency == "INR"
 
 
+def test_currency_must_be_three_letters():
+    d = _valid_payload_dict()
+    d["header"]["currency"] = "Rupees"
+    with pytest.raises(ValidationError):
+        RemittancePayload.model_validate(d)
+
+
+def test_currency_rejects_non_alphabetic():
+    d = _valid_payload_dict()
+    d["header"]["currency"] = "1N5"
+    with pytest.raises(ValidationError):
+        RemittancePayload.model_validate(d)
+
+
 def test_extra_field_forbidden():
     d = _valid_payload_dict()
     d["header"]["mystery"] = 1
