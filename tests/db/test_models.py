@@ -1,9 +1,27 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from ar_pipeline.db.models import Attachment, Email
+from ar_pipeline.db.models import Attachment, Email, Extraction
+
+
+def _make_email(db_session, mid: str) -> Email:
+    email = Email(
+        internet_message_id=mid,
+        sender_address="a@v.com",
+        sender_domain="v.com",
+        subject="x",
+        received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        body_html="",
+        body_text="",
+        raw_headers={},
+        status="new",
+    )
+    db_session.add(email)
+    db_session.flush()
+    return email
 
 
 def test_insert_and_query_email(db_session):
@@ -89,3 +107,38 @@ def test_attachment_belongs_to_email(db_session):
     db_session.add(att)
     db_session.flush()
     assert att.id is not None
+
+
+def test_jsonb_in_place_mutation_persists(db_session):
+    email = Email(
+        internet_message_id="<jsonb@vendor.com>",
+        sender_address="a@v.com",
+        sender_domain="v.com",
+        subject="x",
+        received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        body_html="",
+        body_text="",
+        raw_headers={"a": 1},
+        status="new",
+    )
+    db_session.add(email)
+    db_session.flush()
+    email.raw_headers["b"] = 2
+    db_session.flush()
+    db_session.expire(email)
+    assert db_session.get(Email, email.id).raw_headers == {"a": 1, "b": 2}
+
+
+def test_confidence_out_of_range_rejected(db_session):
+    email = _make_email(db_session, "<conf@vendor.com>")
+    db_session.add(
+        Extraction(
+            email_id=email.id,
+            canonical={},
+            confidence=Decimal("1.5"),
+            validation_flags=[],
+            status="pending_review",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db_session.flush()

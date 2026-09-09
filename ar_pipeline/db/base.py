@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import lru_cache
 
@@ -32,7 +33,7 @@ def reset_engine() -> None:
 
 
 @contextmanager
-def get_session():
+def get_session() -> Iterator[Session]:
     session = get_sessionmaker()()
     try:
         yield session
