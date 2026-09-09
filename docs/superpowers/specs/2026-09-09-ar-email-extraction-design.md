@@ -133,6 +133,29 @@ tests/
 > `Settings.database_url` is required (no default) — fail fast on misconfig.
 > `graph_client_secret` and `backend_auth_header` are `SecretStr`.
 
+> Amendments during implementation (Classify & Extract plan, 2026-09-09),
+> after reviewing real client sample emails:
+> - **Canonical schema v2.** One `RemittancePayload` == one payment
+>   (`envelope.payment_index` distinguishes payments from the same email —
+>   vendors combine several payments, each with its own UTR/date, in one
+>   email). Deductions are a **list of typed items** at both header and
+>   line-item level: `Deduction{type: tds|credit_note|advance_adjustment|
+>   discount|rounding|other, amount, reason}` (TDS u/s 194Q, credit notes,
+>   and advance adjustments routinely stack on one invoice line). `Header.
+>   payment_reference` and `payment_date` are now **optional** — some
+>   advices carry no bank UTR (only "RTGS PAYMENT" or an internal request
+>   number); `payment_reference_type` records what the reference is.
+> - **`extraction_source.kind` gains `body_text`** — vendor remittances in
+>   the email body are often free-text prose, not an HTML table. Migration
+>   `0002_add_body_text_kind`.
+> - **`RawExtraction`** carries `{text, tables, meta}` — no `images` field.
+>   The vision extractor consumes the image and returns its transcription
+>   as `text`; downstream normalization treats vision output like any other
+>   raw extraction.
+> - The AR mailbox mostly receives vendor advices **forwarded by internal
+>   staff**, so the envelope sender is usually internal — `vendor_guess`
+>   must come from message content, not the `From` address.
+
 ## Modules
 
 ### ingest/
