@@ -8,3 +8,4 @@ htmlcov/
 .env
 data/blob/
 .superpowers/
+.worktrees/
