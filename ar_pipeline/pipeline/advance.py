@@ -200,6 +200,10 @@ def _run_extractor(
         return extract_excel(data)
     if src.kind == "pdf_text":
         return extract_pdf(data)
-    if src.kind in ("pdf_scanned", "image"):
+    if src.kind == "pdf_scanned":
+        # classification already confirmed a PDF (a scanned one may arrive as
+        # application/octet-stream), so name the media type explicitly.
+        return vision_extractor.extract_image(data, "application/pdf")
+    if src.kind == "image":
         return vision_extractor.extract_image(data, att.content_type)
     raise ValueError(f"unsupported attachment source kind: {src.kind!r}")
