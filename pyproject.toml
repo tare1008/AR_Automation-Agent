@@ -23,6 +23,9 @@ dev = [
     "pgserver>=0.1.4",
     "ruff>=0.16.6",
     "mypy>=2.3.1",
+    "reportlab>=5.0.1",
+    "openpyxl>=3.1.5",
+    "types-openpyxl>=3.1.5.20260827",
 ]
 
 [tool.pytest.ini_options]
@@ -40,7 +43,7 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["docs", "migrations/versions", "tests/fixtures/_generator"]
+extend-exclude = ["docs", "migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -48,7 +51,6 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 packages = ["ar_pipeline", "stub_backend", "tests"]
-exclude = ["tests/fixtures/_generator/"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -56,7 +58,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pgserver.*", "apscheduler.*", "msal.*"]
+module = ["pgserver.*", "apscheduler.*", "msal.*", "reportlab.*"]
 ignore_missing_imports = true
 
 [build-system]
