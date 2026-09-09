@@ -10,3 +10,6 @@ data/blob/
 .pgdata/
 .superpowers/
 .worktrees/
+
+# Real client sample emails — never commit (PII / bank refs)
+samples/
