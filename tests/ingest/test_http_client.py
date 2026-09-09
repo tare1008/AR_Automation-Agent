@@ -38,6 +38,25 @@ def _message(mid, imid, *, html="<p>x</p>"):
     }
 
 
+def test_client_close_and_context_manager_close_http():
+    closed = {"n": 0}
+
+    def handler(request):
+        return httpx.Response(200, json={"value": []})
+
+    client = _client(handler)
+    original_close = client._http.close
+
+    def _tracked_close():
+        closed["n"] += 1
+        original_close()
+
+    client._http.close = _tracked_close  # type: ignore[method-assign]
+    with client as c:
+        assert c is client
+    assert closed["n"] == 1
+
+
 def test_fetch_delta_follows_pages_and_returns_delta_link():
     calls = []
 
