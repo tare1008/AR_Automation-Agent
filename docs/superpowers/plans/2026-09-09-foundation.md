@@ -316,6 +316,19 @@ def test_currency_must_be_three_letters():
         RemittancePayload.model_validate(bad)
 
 
+def test_currency_rejects_non_alphabetic():
+    bad = _valid_payload_dict()
+    bad["header"]["currency"] = "1N5"
+    with pytest.raises(ValidationError):
+        RemittancePayload.model_validate(bad)
+
+
+def test_currency_is_uppercased():
+    d = _valid_payload_dict()
+    d["header"]["currency"] = "inr"
+    assert RemittancePayload.model_validate(d).header.currency == "INR"
+
+
 def test_json_schema_is_dict_with_defs():
     assert isinstance(CANONICAL_JSON_SCHEMA, dict)
     assert CANONICAL_JSON_SCHEMA["title"] == "RemittancePayload"
@@ -344,7 +357,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-_Currency = Annotated[str, StringConstraints(min_length=3, max_length=3, to_upper=True)]
+_Currency = Annotated[
+    str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)
+]
 
 
 class Envelope(BaseModel):
@@ -416,7 +431,7 @@ Create empty `tests/schema/__init__.py`.
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/schema/test_canonical.py -v`
-Expected: PASS (6 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
