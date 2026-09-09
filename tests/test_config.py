@@ -1,5 +1,16 @@
+import pytest
+
 import ar_pipeline.config as config_module
 from ar_pipeline.config import Settings, get_settings
+
+
+@pytest.fixture(autouse=True)
+def _restore_settings_cache():
+    yield
+    config_module.get_settings.cache_clear()
+    from ar_pipeline.db.base import reset_engine
+
+    reset_engine()
 
 
 def test_settings_reads_from_env(monkeypatch):
