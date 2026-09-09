@@ -5,8 +5,11 @@ one state. Every email is processed inside its own ``session.begin_nested()``
 savepoint so a failing step poisons only that email. Extraction goes further:
 each source is extracted inside its *own* nested savepoint, so a corrupt
 attachment fails only its own source and its healthy siblings' ``RawExtraction``
-rows survive (a manual retry then re-runs only the failed source). The caller
-owns the outer transaction -- ``advance_once`` never commits.
+rows survive (a manual retry then re-runs only the failed source).
+
+``advance_once`` commits after every email (success or error): the caller's
+session object is used but its transaction boundary is not relied upon, so a
+blocking vision call never pins a connection across the whole batch.
 """
 
 from __future__ import annotations
@@ -44,6 +47,14 @@ def advance_once(
     *,
     batch: int = 20,
 ) -> AdvanceStats:
+    """Advance one batch of pending emails, committing after each one.
+
+    The caller's ``session`` object is used but its transaction boundary is not
+    relied upon: extraction is I/O-heavy (a blocking vision call per email) and
+    holding one transaction open across the whole batch would pin a connection
+    for minutes. ``batch=20`` is kept for now; a smaller batch may be wanted
+    once real vision volume lands.
+    """
     emails = list(
         session.scalars(
             select(Email)
@@ -61,16 +72,17 @@ def advance_once(
         except Exception as exc:  # savepoint already rolled back
             email.status = "error"
             email.error_detail = _truncate(f"{type(exc).__name__}: {exc}")
-            errored += 1
-            continue
+            result = "errored"
 
         if result == "classified":
             classified += 1
         elif result == "extracted":
             extracted += 1
         elif result == "errored":
-            # _extract already set status/error_detail; just count it.
+            # status / error_detail already set (here or in _extract); just count.
             errored += 1
+
+        session.commit()
 
     return AdvanceStats(classified=classified, extracted=extracted, errored=errored)
 

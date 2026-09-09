@@ -20,6 +20,7 @@ def advance_pipeline() -> None:
     from ar_pipeline.pipeline.advance import advance_once
     from ar_pipeline.storage import get_blob_store
 
+    # advance_once commits per email; this wrapper's final commit is a no-op.
     with get_session() as session:
         stats = advance_once(session, get_blob_store(), get_vision_extractor())
     log.info(
