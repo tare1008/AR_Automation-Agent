@@ -4,7 +4,7 @@
 
 **Goal:** For each stored email, decide which "extraction sources" it contains (Excel / PDF / body table / body free-text / image) and mechanically extract the raw content of each into `raw_extraction` rows — so the normalization step (next plan) has structured raw material to work from. Also evolve the canonical schema to match what real vendor emails actually contain.
 
-**Architecture:** A `classify_email()` pure function turns one `email` + its `attachment` rows into a list of `extraction_source` rows. One extractor per source *kind*, each a pure function `bytes|str -> RawExtraction`, selected by kind. Deterministic extractors (openpyxl, BeautifulSoup, pdfplumber) for structured formats; an LLM-vision extractor for images and scanned PDFs. `worker.advance_pipeline()` walks emails `new → classified → extracted`, one step per tick, per-email error isolation.
+**Architecture:** A `classify_email()` pure function turns one `email` + its `attachment` rows into a list of `extraction_source` rows. One extractor per source *kind*, each a pure function `bytes|str -> ExtractedContent`, selected by kind. Deterministic extractors (openpyxl, BeautifulSoup, pdfplumber) for structured formats; an LLM-vision extractor for images and scanned PDFs. `worker.advance_pipeline()` walks emails `new → classified → extracted`, one step per tick, per-email error isolation.
 
 **Tech Stack:** Python 3.12, openpyxl, pdfplumber, beautifulsoup4 + lxml, `anthropic` SDK (vision), SQLAlchemy 2.0 (sync), pytest. Dev: reportlab (fixture regen).
 
@@ -463,13 +463,13 @@ git commit -m "feat: email classifier (body/excel/pdf/image source detection)"
 
 **Interfaces:**
 - Produces:
-  - `ar_pipeline.extract.base.RawExtraction` — frozen dataclass: `text: str`, `tables: list[list[list[str]]]` (each table a list of row-lists of cell strings), `meta: dict[str, object]` (e.g. `{"sheet_names": [...]}`, `{"page_count": 2}`). Method `to_payload(self) -> dict` for the `raw_extraction.payload` jsonb.
+  - `ar_pipeline.extract.base.ExtractedContent` — frozen dataclass: `text: str`, `tables: list[list[list[str]]]` (each table a list of row-lists of cell strings), `meta: dict[str, object]` (e.g. `{"sheet_names": [...]}`, `{"page_count": 2}`). Method `to_payload(self) -> dict` for the `raw_extraction.payload` jsonb.
   - `ar_pipeline.extract.base.EXTRACTOR_VERSION = "1"` (bump on behavior change; stored in `raw_extraction.extractor_version`).
-  - `ar_pipeline.extract.excel.extract_excel(data: bytes) -> RawExtraction` — openpyxl `load_workbook(BytesIO(data), data_only=True, read_only=True)`; every sheet → a table (rows with any non-`None` cell; each cell `str(c) if c is not None else ""`); `text` = a readable dump of all sheets; `meta["sheet_names"]`.
-  - `ar_pipeline.extract.html_table.extract_html_tables(body_html: str) -> RawExtraction` — BeautifulSoup(`lxml`); every `<table>` → a table (`<tr>` → row, `<td>|<th>` → cell text, whitespace-collapsed); `text` = the page's visible text with `<script>/<style>` removed and whitespace collapsed; `meta["table_count"]`.
-  - `ar_pipeline.extract.body_text.extract_body_text(body_text: str, body_html: str) -> RawExtraction` — prefer `body_text`; if empty, strip tags from `body_html`. Collapse runs of blank lines; keep line structure (the free-text fixture relies on line breaks). `tables=[]`.
-  - `ar_pipeline.extract.pdf.extract_pdf(data: bytes) -> RawExtraction` — pdfplumber; per page `extract_text()` joined into `text` (page-separated by `"\n\n"`), `extract_tables()` appended to `tables`; `meta["page_count"]`.
-- None of these touch the DB or network. Each is a pure `bytes|str -> RawExtraction`.
+  - `ar_pipeline.extract.excel.extract_excel(data: bytes) -> ExtractedContent` — openpyxl `load_workbook(BytesIO(data), data_only=True, read_only=True)`; every sheet → a table (rows with any non-`None` cell; each cell `str(c) if c is not None else ""`); `text` = a readable dump of all sheets; `meta["sheet_names"]`.
+  - `ar_pipeline.extract.html_table.extract_html_tables(body_html: str) -> ExtractedContent` — BeautifulSoup(`lxml`); every `<table>` → a table (`<tr>` → row, `<td>|<th>` → cell text, whitespace-collapsed); `text` = the page's visible text with `<script>/<style>` removed and whitespace collapsed; `meta["table_count"]`.
+  - `ar_pipeline.extract.body_text.extract_body_text(body_text: str, body_html: str) -> ExtractedContent` — prefer `body_text`; if empty, strip tags from `body_html`. Collapse runs of blank lines; keep line structure (the free-text fixture relies on line breaks). `tables=[]`.
+  - `ar_pipeline.extract.pdf.extract_pdf(data: bytes) -> ExtractedContent` — pdfplumber; per page `extract_text()` joined into `text` (page-separated by `"\n\n"`), `extract_tables()` appended to `tables`; `meta["page_count"]`.
+- None of these touch the DB or network. Each is a pure `bytes|str -> ExtractedContent`.
 
 - [ ] **Step 1: Write failing tests** — one per extractor, asserting against the *known* fixture content. Examples:
   - `test_excel`: load `06_zenith_excel`'s xlsx bytes (via the loader / `iter_attachments`), `extract_excel` → a table containing a row with `"ZCC2610000038"` and one with `"TOTAL"`; `meta["sheet_names"] == ["Sheet1"]`.
@@ -487,20 +487,20 @@ git commit -m "feat: deterministic extractors (excel, html table, body text, pdf
 
 ---
 
-### Task 5: Vision extractor (image / scanned PDF → RawExtraction via Claude)
+### Task 5: Vision extractor (image / scanned PDF → ExtractedContent via Claude)
 
 **Files:**
 - Create: `ar_pipeline/extract/vision.py`
 - Create: `tests/extract/test_vision.py`
 
 **Interfaces:**
-- Consumes: `RawExtraction`, `EXTRACTOR_VERSION`, `ar_pipeline.config.get_settings`.
+- Consumes: `ExtractedContent`, `EXTRACTOR_VERSION`, `ar_pipeline.config.get_settings`.
 - Produces:
-  - `ar_pipeline.extract.vision.VisionExtractor` — `Protocol`: `extract_image(self, data: bytes, media_type: str) -> RawExtraction`.
+  - `ar_pipeline.extract.vision.VisionExtractor` — `Protocol`: `extract_image(self, data: bytes, media_type: str) -> ExtractedContent`.
   - `ar_pipeline.extract.vision.AnthropicVisionExtractor` — real impl. `__init__(self, client: "anthropic.Anthropic | None" = None, model: str = "claude-opus-5")`. `extract_image`: base64-encode; one `client.messages.create` call, `model=self._model`, `max_tokens=8000`, a `system` instructing "You are transcribing a payment remittance / settlement document. Output every line of text verbatim, and render any tabular data as pipe-delimited rows (one row per line). Do not summarise, interpret, or omit anything. No commentary." and a user message with an `image` block + `"Transcribe this document."`. Parse: `text` = the response's concatenated `text` blocks; `tables` = `[]` (the normalizer parses the pipe rows out of `text`); `meta = {"model": self._model, "via": "vision"}`. Guard `response.stop_reason` — if `"refusal"`, raise `VisionRefused`.
   - `ar_pipeline.extract.vision.VisionRefused(Exception)`.
   - `ar_pipeline.extract.vision.get_vision_extractor() -> VisionExtractor` — returns `AnthropicVisionExtractor()` (reads `get_settings()` for a future `llm_model` override; for now the default).
-  - `tests/extract/vision_fake.FakeVisionExtractor` — returns a canned `RawExtraction` for tests of Task 6.
+  - `tests/extract/vision_fake.FakeVisionExtractor` — returns a canned `ExtractedContent` for tests of Task 6.
 
 Read the bundled `claude-api` skill's `python/claude-api/README.md` (Vision section) — use `anthropic.Anthropic()` + `client.messages.create` with a base64 `image` block. Add `anthropic` to deps (`uv add anthropic`). Default model `claude-opus-5`.
 
@@ -589,7 +589,7 @@ git commit -m "feat: Claude vision extractor for images and scanned PDFs"
   - `ar_pipeline.pipeline.advance.AdvanceStats` — frozen dataclass: `classified: int`, `extracted: int`, `errored: int`.
   - `ar_pipeline.pipeline.advance.advance_once(session, blob_store, vision_extractor, *, batch: int = 20) -> AdvanceStats` — select emails with `status in ("new", "classified")` (oldest `received_at` first, limit `batch`); for each, inside `session.begin_nested()` + `try/except Exception`:
     - `status == "new"`: `classify_email(...)` → insert `ExtractionSource` rows (map `SourceSpec` → row; `ref` `"body"` stays `"body"`, an attachment id becomes `str(att.id)`) → `email.status = "classified"` → `classified += 1`.
-    - `status == "classified"`: for each non-skipped `ExtractionSource`, load its bytes (`ref=="body"` → use `email.body_html/body_text`; else fetch the `Attachment` blob), dispatch by `kind` to the extractor, insert a `RawExtraction(extraction_source_id=..., payload=raw.to_payload(), extractor_version=...)` → when all non-skipped sources have a `raw_extraction`, `email.status = "extracted"` → `extracted += 1`.
+    - `status == "classified"`: for each non-skipped `ExtractionSource`, load its bytes (`ref=="body"` → use `email.body_html/body_text`; else fetch the `Attachment` blob), dispatch by `kind` to the extractor, insert a `ExtractedContent(extraction_source_id=..., payload=raw.to_payload(), extractor_version=...)` → when all non-skipped sources have a `raw_extraction`, `email.status = "extracted"` → `extracted += 1`.
     - on exception: savepoint rolls back, `email.status = "error"`, `email.error_detail = f"{type(exc).__name__}: {exc}"` (this write is OUTSIDE the rolled-back savepoint — re-assign on the live `email` object after the `except`), `errored += 1`.
   - kind → extractor dispatch: `excel`→`extract_excel`, `body_table`→`extract_html_tables(email.body_html)`, `body_text`→`extract_body_text(...)`, `pdf_text`→`extract_pdf`, `pdf_scanned`/`image`→`vision_extractor.extract_image(data, media_type)`.
   - `ar_pipeline.worker.advance_pipeline()` — build `get_blob_store()` + `get_vision_extractor()`, `with get_session() as s: advance_once(s, ...)`, log the stats; still returns `None`. Lazy imports to keep `worker` light.
@@ -613,7 +613,7 @@ git commit -m "feat: advance_pipeline runs classify then extract with per-email 
 
 **1. Spec coverage:**
 - `classify/` — email + attachments → `extraction_source` rows `{kind, ref, skipped, skip_reason}`; heuristics (content-type, PDF text-layer probe, `<table>` detection, skip small inline images) → Task 3. Spec kinds extended with `body_text` (migration `0002`) — a spec deviation, recorded in the spec amendment block and here. ✓
-- `extract/` — one extractor per kind, common `RawExtraction {tables, text, meta}`; openpyxl / read_html-equivalent (BeautifulSoup) / pdfplumber deterministic; LLM vision for image + scanned PDF → Tasks 4, 5. `RawExtraction` drops the spec's `images` field (vision consumes images directly and returns text) — recorded. ✓
+- `extract/` — one extractor per kind, common `ExtractedContent {tables, text, meta}`; openpyxl / read_html-equivalent (BeautifulSoup) / pdfplumber deterministic; LLM vision for image + scanned PDF → Tasks 4, 5. `ExtractedContent` drops the spec's `images` field (vision consumes images directly and returns text) — recorded. ✓
 - `raw_extraction` rows with `extractor_version` → Task 6. ✓
 - `email.status` advances `new → classified → extracted`; per-source failure isolated, email → `error` with detail; nothing dropped silently → Task 6. ✓
 - `worker.advance_pipeline()` becomes real → Task 6. ✓
@@ -622,7 +622,7 @@ git commit -m "feat: advance_pipeline runs classify then extract with per-email 
 
 **2. Placeholder scan:** Tasks 3–6 give rules + interfaces + concrete fixture-driven test assertions rather than full verbatim code for the extractor bodies — deliberate, because the extractors are short and the fixture content pins them exactly (every test names a real invoice number / amount / UTR from a known fixture). Task 1 and the schema are fully verbatim. No "TBD" / "handle errors" / "similar to Task N".
 
-**3. Type consistency:** `SourceSpec(kind, ref, skipped, skip_reason)` defined Task 3, consumed Task 6. `RawExtraction(text, tables, meta)` + `.to_payload()` + `EXTRACTOR_VERSION` defined Task 4, used by Task 5 (`vision.py` returns the same `RawExtraction`) and Task 6 (dispatch + `raw_extraction` insert). `VisionExtractor.extract_image(data, media_type) -> RawExtraction` consistent Task 5 ↔ Task 6. `AdvanceStats(classified, extracted, errored)` Task 6. `load_email(name, session, blob_store) -> Email` Task 2, used by Tasks 3 and 6 tests. Schema names (`Deduction`, `DeductionType`, new `Header`/`LineItem`/`Envelope` fields) Task 1, referenced nowhere else in this plan (the normalizer in the next plan produces them).
+**3. Type consistency:** `SourceSpec(kind, ref, skipped, skip_reason)` defined Task 3, consumed Task 6. `ExtractedContent(text, tables, meta)` + `.to_payload()` + `EXTRACTOR_VERSION` defined Task 4, used by Task 5 (`vision.py` returns the same `ExtractedContent`) and Task 6 (dispatch + `raw_extraction` insert). `VisionExtractor.extract_image(data, media_type) -> ExtractedContent` consistent Task 5 ↔ Task 6. `AdvanceStats(classified, extracted, errored)` Task 6. `load_email(name, session, blob_store) -> Email` Task 2, used by Tasks 3 and 6 tests. Schema names (`Deduction`, `DeductionType`, new `Header`/`LineItem`/`Envelope` fields) Task 1, referenced nowhere else in this plan (the normalizer in the next plan produces them).
 
 ## Execution Handoff
 
