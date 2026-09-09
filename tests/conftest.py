@@ -15,9 +15,7 @@ def _embedded_pg():
     PGDATA.mkdir(exist_ok=True)
     server = pgserver.get_server(str(PGDATA))
     for name in ("ar_pipeline", "ar_pipeline_test"):
-        exists = server.psql(
-            f"SELECT 1 FROM pg_database WHERE datname = '{name}'"
-        ).strip()
+        exists = server.psql(f"SELECT 1 FROM pg_database WHERE datname = '{name}'").strip()
         if "1" not in exists:
             server.psql(f"CREATE DATABASE {name}")
 
@@ -43,8 +41,8 @@ def _embedded_pg():
 @pytest.fixture(scope="session")
 def _test_engine(_embedded_pg):
     from ar_pipeline.config import get_settings
-    from ar_pipeline.db.base import Base
     from ar_pipeline.db import models  # noqa: F401  (register mappers)
+    from ar_pipeline.db.base import Base
 
     engine = create_engine(get_settings().test_database_url, future=True)
     Base.metadata.drop_all(engine)

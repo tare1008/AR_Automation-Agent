@@ -6,14 +6,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-_Currency = Annotated[
-    str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)
-]
+_Currency = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)]
 
 
 class Envelope(BaseModel):

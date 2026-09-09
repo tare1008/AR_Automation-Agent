@@ -13,14 +13,10 @@ def _migrations_db(_embedded_pg):
     """
     server = _embedded_pg
     name = "ar_pipeline_migrations_test"
-    exists = server.psql(
-        f"SELECT 1 FROM pg_database WHERE datname = '{name}'"
-    ).strip()
+    exists = server.psql(f"SELECT 1 FROM pg_database WHERE datname = '{name}'").strip()
     if "1" not in exists:
         server.psql(f"CREATE DATABASE {name}")
-    uri = server.get_uri(database=name).replace(
-        "postgresql://", "postgresql+psycopg://", 1
-    )
+    uri = server.get_uri(database=name).replace("postgresql://", "postgresql+psycopg://", 1)
     yield uri
 
 
@@ -28,7 +24,9 @@ def _alembic(uri: str, *args: str) -> subprocess.CompletedProcess:
     env = {**os.environ, "ALEMBIC_DATABASE_URL": uri}
     return subprocess.run(
         ["uv", "run", "alembic", *args],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
 
 

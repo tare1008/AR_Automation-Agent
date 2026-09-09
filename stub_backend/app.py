@@ -7,8 +7,11 @@ app = FastAPI(title="AR stub backend")
 
 
 @app.post("/remittances")
-def receive(payload: RemittancePayload, response: Response,
-            idempotency_key: str | None = Header(default=None)):
+def receive(
+    payload: RemittancePayload,
+    response: Response,
+    idempotency_key: str | None = Header(default=None),
+):
     extraction_id = payload.envelope.extraction_id
     if idempotency_key and idempotency_key in _IDEMPOTENCY:
         response.status_code = 200

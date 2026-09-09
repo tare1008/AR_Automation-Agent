@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -13,7 +13,7 @@ def _make_email(db_session, mid: str) -> Email:
         sender_address="a@v.com",
         sender_domain="v.com",
         subject="x",
-        received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        received_at=datetime(2026, 9, 9, tzinfo=UTC),
         body_html="",
         body_text="",
         raw_headers={},
@@ -30,7 +30,7 @@ def test_insert_and_query_email(db_session):
         sender_address="ap@vendor.com",
         sender_domain="vendor.com",
         subject="Remittance",
-        received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        received_at=datetime(2026, 9, 9, tzinfo=UTC),
         body_html="<p>hi</p>",
         body_text="hi",
         raw_headers={},
@@ -53,7 +53,7 @@ def test_internet_message_id_is_unique(db_session):
                 sender_address="ap@vendor.com",
                 sender_domain="vendor.com",
                 subject="x",
-                received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+                received_at=datetime(2026, 9, 9, tzinfo=UTC),
                 body_html="",
                 body_text="",
                 raw_headers={},
@@ -71,7 +71,7 @@ def test_bad_status_rejected(db_session):
             sender_address="ap@vendor.com",
             sender_domain="vendor.com",
             subject="x",
-            received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+            received_at=datetime(2026, 9, 9, tzinfo=UTC),
             body_html="",
             body_text="",
             raw_headers={},
@@ -88,7 +88,7 @@ def test_attachment_belongs_to_email(db_session):
         sender_address="ap@vendor.com",
         sender_domain="vendor.com",
         subject="x",
-        received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        received_at=datetime(2026, 9, 9, tzinfo=UTC),
         body_html="",
         body_text="",
         raw_headers={},
@@ -115,7 +115,7 @@ def test_jsonb_in_place_mutation_persists(db_session):
         sender_address="a@v.com",
         sender_domain="v.com",
         subject="x",
-        received_at=datetime(2026, 9, 9, tzinfo=timezone.utc),
+        received_at=datetime(2026, 9, 9, tzinfo=UTC),
         body_html="",
         body_text="",
         raw_headers={"a": 1},

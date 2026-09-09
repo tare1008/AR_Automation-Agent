@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -13,7 +13,7 @@ def _payload():
             "extraction_id": "ext-42",
             "source_email_id": "email-1",
             "vendor_guess": None,
-            "extracted_at": datetime(2026, 9, 9, tzinfo=timezone.utc).isoformat(),
+            "extracted_at": datetime(2026, 9, 9, tzinfo=UTC).isoformat(),
             "reviewed_by": "u@co.com",
         },
         "header": {
