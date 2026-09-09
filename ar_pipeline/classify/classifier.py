@@ -4,10 +4,11 @@ The classifier decides *what* should be handed to an extractor and *how*:
 
 * each attachment becomes at most one spec (``excel`` / ``pdf_text`` /
   ``pdf_scanned`` / ``image``), possibly ``skipped``;
-* the email body becomes at most one spec (``body_table`` / ``body_text``) --
-  but only when no non-skipped attachment source already exists, so a
-  remittance carried in a PDF/spreadsheet is not also re-extracted from the
-  cover note.
+* the email body becomes at most one spec: a ``body_table`` is always
+  emitted when the body carries a numeric table (real signal even next to
+  an attachment -- the normalizer dedups), while a prose ``body_text`` is
+  emitted only when no non-skipped attachment source already exists, so a
+  plain cover note for a PDF/spreadsheet is not re-extracted.
 """
 
 from __future__ import annotations
@@ -102,6 +103,8 @@ def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
             )
         return SourceSpec("image", ref)
 
+    # kind="image" is cosmetic here — skipped=True means it is never handed to an
+    # extractor; the CHECK constraint has no "unknown" value.
     return SourceSpec(
         "image",
         ref,
@@ -130,9 +133,12 @@ def _has_numeric_table(body_html: str) -> bool:
     return False
 
 
-def _classify_body(email: Email) -> SourceSpec | None:
+def _classify_body(email: Email, has_live_attachment_source: bool) -> SourceSpec | None:
     if _has_numeric_table(email.body_html):
         return SourceSpec("body_table", _BODY_REF)
+
+    if has_live_attachment_source:
+        return None  # a prose cover note alongside an attachment is not a source
 
     text = _body_text(email)
     if _non_ws_len(text) >= _BODY_TEXT_MIN_CHARS and any(ch.isdigit() for ch in text):
@@ -147,10 +153,9 @@ def classify_email(
     specs: list[SourceSpec] = [_classify_attachment(att, blob_store) for att in attachments]
 
     has_live_attachment_source = any(not s.skipped for s in specs)
-    if not has_live_attachment_source:
-        body_spec = _classify_body(email)
-        if body_spec is not None:
-            specs.append(body_spec)
+    body_spec = _classify_body(email, has_live_attachment_source)
+    if body_spec is not None:
+        specs.append(body_spec)
 
     if not any(not s.skipped for s in specs):
         specs.append(
