@@ -5,11 +5,10 @@ from fastapi import FastAPI
 
 from ar_pipeline.worker import build_scheduler
 
-logging.basicConfig(level=logging.INFO)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logging.basicConfig(level=logging.INFO)
     scheduler = build_scheduler()
     scheduler.start()
     app.state.scheduler = scheduler

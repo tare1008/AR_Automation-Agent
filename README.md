@@ -16,3 +16,6 @@ suite starts its own instance automatically. For a dev DB:
 ## Run
     uv run uvicorn ar_pipeline.main:app --reload
     uv run uvicorn stub_backend.app:app --port 9000 --reload
+
+Run a single app process only — the in-process scheduler is not safe under
+`uvicorn --workers N`.

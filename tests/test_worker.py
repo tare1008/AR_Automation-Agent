@@ -1,4 +1,4 @@
-from httpx import ASGITransport, AsyncClient
+from fastapi.testclient import TestClient
 
 from ar_pipeline import worker
 from ar_pipeline.main import app
@@ -8,6 +8,13 @@ def test_scheduler_registers_three_jobs():
     sched = worker.build_scheduler()
     ids = {j.id for j in sched.get_jobs()}
     assert ids == {"poll_inbox", "advance_pipeline", "run_deliveries"}
+
+
+def test_scheduler_job_defaults_applied():
+    sched = worker.build_scheduler()
+    assert sched._job_defaults["coalesce"] is True
+    assert sched._job_defaults["max_instances"] == 1
+    assert sched._job_defaults["misfire_grace_time"] == 300
 
 
 def test_noop_jobs_return_none(caplog):
@@ -20,9 +27,9 @@ def test_noop_jobs_return_none(caplog):
     assert "poll_inbox: no-op" in caplog.text
 
 
-async def test_healthz():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        r = await c.get("/healthz")
-    assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+def test_healthz_and_lifespan_starts_scheduler():
+    with TestClient(app) as client:
+        assert client.get("/healthz").json() == {"status": "ok"}
+        assert app.state.scheduler.running
+    # after context exit, scheduler is shut down
+    assert not app.state.scheduler.running

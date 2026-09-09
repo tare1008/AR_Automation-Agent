@@ -18,7 +18,10 @@ class LocalBlobStore:
         self._root = Path(root)
 
     def _path(self, key: str) -> Path:
-        return self._root / key
+        p = (self._root / key).resolve()
+        if not p.is_relative_to(self._root.resolve()):
+            raise ValueError(f"key escapes storage root: {key!r}")
+        return p
 
     def put(self, key: str, data: bytes) -> str:
         path = self._path(key)

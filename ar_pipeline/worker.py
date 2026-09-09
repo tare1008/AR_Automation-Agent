@@ -24,7 +24,9 @@ def run_deliveries() -> None:
 
 def build_scheduler() -> BackgroundScheduler:
     s = get_settings()
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(
+        job_defaults={"coalesce": True, "max_instances": 1, "misfire_grace_time": 300}
+    )
     scheduler.add_job(poll_inbox, "interval", seconds=s.poll_interval_seconds, id="poll_inbox")
     scheduler.add_job(
         advance_pipeline, "interval", seconds=s.advance_interval_seconds, id="advance_pipeline"
