@@ -148,6 +148,17 @@ tests/
   is a no-op.
 - Errors: `429`/throttling → respect `Retry-After`; delta token `410
   Gone` → discard token and do a full resync.
+- **Per-message isolation:** a single malformed message (bad/hostile
+  attachment name, missing field, transient fetch error) must not abort
+  the batch or block the delta token. Wrap each message: log + count as
+  `failed`, continue. The delta token advances even if some messages
+  failed — a poisoned message re-fetched forever would otherwise stall
+  all ingestion (the shared mailbox accepts mail from anyone).
+- Attachment blob keys are unique per attachment (keyed by the
+  `attachment` row id, not the filename — vendors send duplicate
+  filenames). Attachment filenames are reduced to a basename before use.
+- Inline attachments (`hasAttachments == false` but `cid:` images in the
+  body) are still fetched — vendors paste payment tables as screenshots.
 
 ### classify/
 
