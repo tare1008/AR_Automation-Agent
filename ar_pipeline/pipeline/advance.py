@@ -2,10 +2,11 @@
 
 ``advance_once`` pulls a batch of pending emails and moves each forward exactly
 one state. Every email is processed inside its own ``session.begin_nested()``
-savepoint so a failing extractor poisons only that email: its savepoint rolls
-back, the email is flipped to ``error`` on the live object (outside the rolled-
-back savepoint), and the batch continues. The caller owns the outer
-transaction -- ``advance_once`` never commits.
+savepoint so a failing step poisons only that email. Extraction goes further:
+each source is extracted inside its *own* nested savepoint, so a corrupt
+attachment fails only its own source and its healthy siblings' ``RawExtraction``
+rows survive (a manual retry then re-runs only the failed source). The caller
+owns the outer transaction -- ``advance_once`` never commits.
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ def advance_once(
                 result = _step(session, email, blob_store, vision_extractor)
         except Exception as exc:  # savepoint already rolled back
             email.status = "error"
-            email.error_detail = f"{type(exc).__name__}: {exc}"
+            email.error_detail = _truncate(f"{type(exc).__name__}: {exc}")
             errored += 1
             continue
 
@@ -67,6 +68,9 @@ def advance_once(
             classified += 1
         elif result == "extracted":
             extracted += 1
+        elif result == "errored":
+            # _extract already set status/error_detail; just count it.
+            errored += 1
 
     return AdvanceStats(classified=classified, extracted=extracted, errored=errored)
 
@@ -106,30 +110,50 @@ def _extract(
     blob_store: BlobStore,
     vision_extractor: VisionExtractor,
 ) -> str:
-    sources = list(
+    all_sources = list(
         session.scalars(select(ExtractionSource).where(ExtractionSource.email_id == email.id))
     )
-    for src in sources:
-        if src.skipped:
-            continue
-        if _has_raw_extraction(session, src.id):
-            continue
-        content = _run_extractor(session, email, src, blob_store, vision_extractor)
-        session.add(
-            RawExtraction(
-                extraction_source_id=src.id,
-                payload=content.to_payload(),
-                extractor_version=EXTRACTOR_VERSION,
-            )
-        )
-        session.flush()
+    sources = [s for s in all_sources if not s.skipped]
+    if not sources:
+        # every classified source was skipped -> nothing to extract (I4).
+        email.status = "error"
+        email.error_detail = "no extractable content"
+        return "errored"
 
-    non_skipped = [s for s in sources if not s.skipped]
-    if all(_has_raw_extraction(session, s.id) for s in non_skipped):
+    pending = [s for s in sources if not _has_raw_extraction(session, s.id)]
+    failures: list[str] = []
+    for src in pending:
+        try:
+            with session.begin_nested():
+                content = _run_extractor(session, email, src, blob_store, vision_extractor)
+                session.add(
+                    RawExtraction(
+                        extraction_source_id=src.id,
+                        payload=content.to_payload(),
+                        extractor_version=EXTRACTOR_VERSION,
+                    )
+                )
+                session.flush()
+        except Exception as exc:  # noqa: BLE001 -- per-source isolation is the point
+            failures.append(f"{src.kind} {src.id}: {type(exc).__name__}: {exc}")
+
+    if failures:
+        email.status = "error"
+        email.error_detail = _truncate("; ".join(failures))
+        return "errored"
+
+    if all(_has_raw_extraction(session, s.id) for s in sources):
         email.status = "extracted"
         session.flush()
         return "extracted"
+    # unreachable: every pending source is handled or recorded as a failure above.
     return "classified"
+
+
+def _truncate(s: str, n: int = 2000) -> str:
+    """Cap an ``error_detail`` string -- openpyxl / pdfplumber messages can embed
+    file paths and document content, and Plan 5 renders it verbatim."""
+    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def _has_raw_extraction(session: Session, source_id: uuid.UUID) -> bool:
