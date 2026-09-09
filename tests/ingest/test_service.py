@@ -59,6 +59,7 @@ def test_run_poll_invokes_poll_once(monkeypatch):
 
     stats = service.run_poll()
     assert calls["hit"] is True
+    assert stats is not None
     assert stats.new_emails == 1
 
 

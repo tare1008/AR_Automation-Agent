@@ -47,7 +47,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
 python_version = "3.12"
-packages = ["ar_pipeline", "stub_backend"]
+packages = ["ar_pipeline", "stub_backend", "tests"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 warn_redundant_casts = true
