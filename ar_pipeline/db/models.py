@@ -105,7 +105,7 @@ class ExtractionSource(Base):
 
     __table_args__ = (
         CheckConstraint(
-            _in("kind", ("body_table", "excel", "pdf_text", "pdf_scanned", "image")),
+            _in("kind", ("body_table", "body_text", "excel", "pdf_text", "pdf_scanned", "image")),
             name="ck_extraction_source_kind",
         ),
     )

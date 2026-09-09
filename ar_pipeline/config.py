@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     backend_auth_header: SecretStr = SecretStr("")
 
     llm_provider: str = "anthropic"
+    llm_model: str = "claude-opus-5"
 
     poll_interval_seconds: int = 300
     advance_interval_seconds: int = 60

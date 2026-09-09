@@ -12,6 +12,7 @@ def _payload():
         "envelope": {
             "extraction_id": "ext-42",
             "source_email_id": "email-1",
+            "payment_index": 0,
             "vendor_guess": None,
             "extracted_at": datetime(2026, 9, 9, tzinfo=UTC).isoformat(),
             "reviewed_by": "u@co.com",
@@ -20,19 +21,19 @@ def _payload():
             "payer_name": "Acme",
             "payer_id": None,
             "payment_reference": "EFT-1",
+            "payment_reference_type": "utr",
             "payment_date": "2026-09-05",
             "payment_method": None,
             "currency": "INR",
             "total_paid_amount": "100.00",
+            "deductions": [],
         },
         "line_items": [
             {
                 "invoice_number": "INV-1",
                 "invoice_date": None,
                 "invoice_amount": "100.00",
-                "discount_taken": None,
-                "deduction_amount": None,
-                "deduction_reason": None,
+                "deductions": [],
                 "amount_paid": "100.00",
             }
         ],
@@ -62,7 +63,7 @@ async def test_valid_payload_accepted(client):
 
 async def test_invalid_payload_rejected(client):
     bad = _payload()
-    del bad["header"]["payment_reference"]
+    del bad["header"]["total_paid_amount"]
     r = await client.post("/remittances", json=bad)
     assert r.status_code == 422
 

@@ -149,9 +149,34 @@ tests/
 >   the email body are often free-text prose, not an HTML table. Migration
 >   `0002_add_body_text_kind`.
 > - **`RawExtraction`** carries `{text, tables, meta}` — no `images` field.
->   The vision extractor consumes the image and returns its transcription
->   as `text`; downstream normalization treats vision output like any other
->   raw extraction.
+>   The extractor dataclass is named `ExtractedContent` in code (the ORM
+>   row keeps the name `RawExtraction`). The vision extractor consumes the
+>   attachment and returns its transcription as `text`; downstream
+>   normalization treats vision output like any other raw extraction.
+> - **HTML body tables** are parsed with BeautifulSoup + lxml, not
+>   `pandas.read_html` (avoids the pandas/numpy dependency).
+> - **`pdf_scanned` is NOT rasterised to page images.** The vision
+>   extractor sends `application/pdf` as a Claude `document` block and
+>   `image/*` as an `image` block (mapping `image/jpg`→`image/jpeg`;
+>   media types Claude's vision API can't take raise `VisionUnsupportedMedia`
+>   so the classifier skips them). Multi-page scanned advices are handled
+>   in one call.
+> - **Deduction sign convention:** every `Deduction.amount` is a
+>   non-negative `Decimal` — the amount *withheld/subtracted*. The identity
+>   the normalizer must satisfy per line item is
+>   `invoice_amount - sum(deductions) == amount_paid`, and per payment
+>   `total_paid_amount == sum(line_items.amount_paid) - sum(header.deductions)`.
+>   A vendor credit note is `Deduction{type: "credit_note"}`, not a
+>   negative line.
+> - **Per-source failure isolation** (spec's `extract/` rule): one bad
+>   attachment fails only its own `extraction_source`; sibling sources of
+>   the same email still get their `raw_extraction`. The email goes to
+>   `error` (a human retries the failed source via the review UI); already-
+>   extracted siblings are not re-run (and re-billed) on retry.
+> - `advance_once` commits per email so a slow/blocking vision call does
+>   not hold one Postgres transaction open across a whole batch.
+> - `advance_once` sends an email with **no non-skipped sources** to
+>   `error` (`error_detail = "no extractable content"`), not `extracted`.
 > - The AR mailbox mostly receives vendor advices **forwarded by internal
 >   staff**, so the envelope sender is usually internal — `vendor_guess`
 >   must come from message content, not the `From` address.

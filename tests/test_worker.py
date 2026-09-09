@@ -17,14 +17,31 @@ def test_scheduler_job_defaults_applied():
     assert sched._job_defaults["misfire_grace_time"] == 300
 
 
-def test_noop_jobs_return_none(caplog):
+def test_run_deliveries_is_noop(caplog):
     import logging
 
     caplog.set_level(logging.INFO)
-    worker.advance_pipeline()
     worker.run_deliveries()
-    assert "advance_pipeline: no-op" in caplog.text
     assert "run_deliveries: no-op" in caplog.text
+
+
+def test_advance_pipeline_calls_advance_once(monkeypatch, caplog):
+    import logging
+
+    from ar_pipeline.pipeline.advance import AdvanceStats
+
+    calls: list[tuple] = []
+
+    def fake_advance_once(session, blob_store, vision_extractor, *, batch=20):
+        calls.append((session, blob_store, vision_extractor))
+        return AdvanceStats(classified=2, extracted=1, errored=0)
+
+    monkeypatch.setattr("ar_pipeline.pipeline.advance.advance_once", fake_advance_once)
+
+    caplog.set_level(logging.INFO)
+    worker.advance_pipeline()  # returns None by signature
+    assert len(calls) == 1
+    assert "2 classified, 1 extracted, 0 errored" in caplog.text
 
 
 def test_poll_inbox_calls_run_poll():

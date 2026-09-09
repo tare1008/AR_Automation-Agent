@@ -13,6 +13,11 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "httpx>=0.28",
     "msal>=1.38.0",
+    "pdfplumber>=0.11.10",
+    "beautifulsoup4>=4.15.0",
+    "lxml>=6.1.3",
+    "openpyxl>=3.1.5",
+    "anthropic>=1.4.0",
 ]
 
 [dependency-groups]
@@ -23,11 +28,16 @@ dev = [
     "pgserver>=0.1.4",
     "ruff>=0.16.6",
     "mypy>=2.3.1",
+    "reportlab>=5.0.1",
+    "openpyxl>=3.1.5",
+    "types-openpyxl>=3.1.5.20260827",
+    "types-beautifulsoup4>=4.12.0.20250516",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+addopts = "-ra --strict-markers -m \"not live\""
+markers = ["live: hits a real external API"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
@@ -55,7 +65,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pgserver.*", "apscheduler.*", "msal.*"]
+module = ["pgserver.*", "apscheduler.*", "msal.*", "reportlab.*", "pdfplumber.*"]
 ignore_missing_imports = true
 
 [build-system]

@@ -2,12 +2,12 @@ From: Dharmendra Kumar <dharmendra.kumar@acmemetals.example>
 To: AR Remittances <ar-remittances@acmemetals.example>
 Subject: FW: Payment Remittance details
 Date: Wed, 18 Feb 2026 12:08:59 -0000
-Message-ID: <81337254867@acmemetals.example>
+Message-ID: <823658152903@acmemetals.example>
 MIME-Version: 1.0
 Content-Type: multipart/alternative;
- boundary="===============4711667890466710107=="
+ boundary="===============3268872882118903509=="
 
---===============4711667890466710107==
+--===============3268872882118903509==
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 
@@ -23,12 +23,12 @@ Dear Dharmendra Ji,
 We have remitted the payment of Rs.1,36,70,691.00 vide UTR no. STBK5202602181=
 3360279 on 18.02.2026.
 
---===============4711667890466710107==
+--===============3268872882118903509==
 MIME-Version: 1.0
 Content-Type: multipart/related;
- boundary="===============7069242964763307570=="
+ boundary="===============7994011160095895293=="
 
---===============7069242964763307570==
+--===============7994011160095895293==
 Content-Type: text/html; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 
@@ -82,7 +82,7 @@ d><td>20.259</td><td>Invoice</td><td>INR</td><td>741,074.22</td><td>741,074.2=
 <p><img src=3D"cid:sig01"></p>
 </body></html>
 
---===============7069242964763307570==
+--===============7994011160095895293==
 Content-Type: image/png
 Content-Transfer-Encoding: base64
 Content-Disposition: attachment; filename="Outlook-signature.png"
@@ -92,6 +92,6 @@ MIME-Version: 1.0
 iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmM
 IQAAAABJRU5ErkJggg==
 
---===============7069242964763307570==--
+--===============7994011160095895293==--
 
---===============4711667890466710107==--
+--===============3268872882118903509==--

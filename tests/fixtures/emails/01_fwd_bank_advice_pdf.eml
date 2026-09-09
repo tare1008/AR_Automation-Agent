@@ -3,15 +3,15 @@ To: AR Remittances <ar-remittances@acmemetals.example>
 Subject: FW: Payment Advice - Advice Ref [GT9KX2M4P1Q7-IN] / Priority payment
  / Customer Ref [NORDICAUTO26021908]
 Date: Fri, 20 Feb 2026 09:31:14 -0000
-Message-ID: <117797012413@acmemetals.example>
+Message-ID: <956809646474@acmemetals.example>
 MIME-Version: 1.0
-Content-Type: multipart/mixed; boundary="===============8333876271022653749=="
+Content-Type: multipart/mixed; boundary="===============2281455812855285895=="
 
---===============8333876271022653749==
+--===============2281455812855285895==
 Content-Type: multipart/alternative;
- boundary="===============4781497262791558349=="
+ boundary="===============3076577643953062478=="
 
---===============4781497262791558349==
+--===============3076577643953062478==
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 
@@ -36,12 +36,12 @@ ice is for your reference only.
 
 Global Payments and Cash Management
 
---===============4781497262791558349==
+--===============3076577643953062478==
 MIME-Version: 1.0
 Content-Type: multipart/related;
- boundary="===============8811059934666808905=="
+ boundary="===============6634773255497938070=="
 
---===============8811059934666808905==
+--===============6634773255497938070==
 Content-Type: text/html; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 
@@ -51,7 +51,7 @@ ent:</b> 19 February 2026 05:19<br><b>Subject:</b> Payment Advice - Advice Re=
 f GT9KX2M4P1Q7-IN</p><p>Dear Sir/Madam,<br>The attached payment advice is iss=
 ued at the request of our customer.</p><img src=3D"cid:logo001"></body></html>
 
---===============8811059934666808905==
+--===============6634773255497938070==
 Content-Type: image/png
 Content-Transfer-Encoding: base64
 Content-Disposition: attachment; filename="image003.png"
@@ -61,11 +61,11 @@ MIME-Version: 1.0
 iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmM
 IQAAAABJRU5ErkJggg==
 
---===============8811059934666808905==--
+--===============6634773255497938070==--
 
---===============4781497262791558349==--
+--===============3076577643953062478==--
 
---===============8333876271022653749==
+--===============2281455812855285895==
 Content-Type: application/octet-stream
 Content-Transfer-Encoding: base64
 Content-Disposition: attachment; filename="Payment_Advice.pdf"
@@ -80,8 +80,8 @@ cyA8PAovRm9udCAxIDAgUiAvUHJvY1NldCBbIC9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9J
 bWFnZUkgXQo+PiAvUm90YXRlIDAgL1RyYW5zIDw8Cgo+PiAKICAvVHlwZSAvUGFnZQo+PgplbmRv
 YmoKNCAwIG9iago8PAovUGFnZU1vZGUgL1VzZU5vbmUgL1BhZ2VzIDYgMCBSIC9UeXBlIC9DYXRh
 bG9nCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9BdXRob3IgKGFub255bW91cykgL0NyZWF0aW9uRGF0
-ZSAoRDoyMDI2MDkwOTIzMjMyMSswNScwMCcpIC9DcmVhdG9yIChhbm9ueW1vdXMpIC9LZXl3b3Jk
-cyAoKSAvTW9kRGF0ZSAoRDoyMDI2MDkwOTIzMjMyMSswNScwMCcpIC9Qcm9kdWNlciAoUmVwb3J0
+ZSAoRDoyMDI2MDkxMDAwNTcxNCswNScwMCcpIC9DcmVhdG9yIChhbm9ueW1vdXMpIC9LZXl3b3Jk
+cyAoKSAvTW9kRGF0ZSAoRDoyMDI2MDkxMDAwNTcxNCswNScwMCcpIC9Qcm9kdWNlciAoUmVwb3J0
 TGFiIFBERiBMaWJyYXJ5IC0gXChvcGVuc291cmNlXCkpIAogIC9TdWJqZWN0ICh1bnNwZWNpZmll
 ZCkgL1RpdGxlICh1bnRpdGxlZCkgL1RyYXBwZWQgL0ZhbHNlCj4+CmVuZG9iago2IDAgb2JqCjw8
 Ci9Db3VudCAxIC9LaWRzIFsgMyAwIFIgXSAvVHlwZSAvUGFnZXMKPj4KZW5kb2JqCjcgMCBvYmoK
@@ -103,9 +103,9 @@ X1o2QlA4blM9WlYqOiwwV1xcYEE1QyghY2RZXlpqIWZ+PmVuZHN0cmVhbQplbmRvYmoKeHJlZgow
 IDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDYxIDAwMDAwIG4gCjAwMDAwMDAwOTIgMDAw
 MDAgbiAKMDAwMDAwMDE5OSAwMDAwMCBuIAowMDAwMDAwNDAyIDAwMDAwIG4gCjAwMDAwMDA0NzAg
 MDAwMDAgbiAKMDAwMDAwMDczMSAwMDAwMCBuIAowMDAwMDAwNzkwIDAwMDAwIG4gCnRyYWlsZXIK
-PDwKL0lEIApbPGNlYzNlMjNkMjNiMzc1YTY0YTIxOGUxM2IyMjlmYWVmPjxjZWMzZTIzZDIzYjM3
-NWE2NGEyMThlMTNiMjI5ZmFlZj5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQg
+PDwKL0lEIApbPDhiYTAyOWEzMTViOGJkNzZiNTY4YWQxMjMxYjhjZmI3Pjw4YmEwMjlhMzE1Yjhi
+ZDc2YjU2OGFkMTIzMWI4Y2ZiNz5dCiUgUmVwb3J0TGFiIGdlbmVyYXRlZCBQREYgZG9jdW1lbnQg
 LS0gZGlnZXN0IChvcGVuc291cmNlKQoKL0luZm8gNSAwIFIKL1Jvb3QgNCAwIFIKL1NpemUgOAo+
 PgpzdGFydHhyZWYKMTY0NwolJUVPRgo=
 
---===============8333876271022653749==--
+--===============2281455812855285895==--

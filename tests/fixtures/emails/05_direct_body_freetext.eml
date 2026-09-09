@@ -2,12 +2,12 @@ From: BharatMetal <bharatmetal2020@example.com>
 To: AR Remittances <ar-remittances@acmemetals.example>
 Subject: RTGS DETAIL
 Date: Sat, 28 Mar 2026 00:00:00 -0000
-Message-ID: <991384060066@example.com>
+Message-ID: <29071651337@example.com>
 MIME-Version: 1.0
 Content-Type: multipart/alternative;
- boundary="===============3390297004182098993=="
+ boundary="===============7486909525848610258=="
 
---===============3390297004182098993==
+--===============7486909525848610258==
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 7bit
 
@@ -36,7 +36,7 @@ Unique Transaction Reference Number (UTR): STBK52026032800800086
 Regards
 Amit Agarwal
 
---===============3390297004182098993==
+--===============7486909525848610258==
 Content-Type: text/html; charset="utf-8"
 Content-Transfer-Encoding: 7bit
 MIME-Version: 1.0
@@ -67,4 +67,4 @@ Regards
 Amit Agarwal
 </pre></body></html>
 
---===============3390297004182098993==--
+--===============7486909525848610258==--

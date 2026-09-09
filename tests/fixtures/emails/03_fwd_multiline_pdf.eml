@@ -2,15 +2,15 @@ From: Geeta A <geeta.a@acmemetals.example>
 To: AR Remittances <ar-remittances@acmemetals.example>
 Subject: FW: RTGS payment to ACME METALS
 Date: Sat, 17 Jan 2026 08:00:00 -0000
-Message-ID: <142390188659@acmemetals.example>
+Message-ID: <735754538588@acmemetals.example>
 MIME-Version: 1.0
-Content-Type: multipart/mixed; boundary="===============8034293849882137191=="
+Content-Type: multipart/mixed; boundary="===============1163958139137470408=="
 
---===============8034293849882137191==
+--===============1163958139137470408==
 Content-Type: multipart/alternative;
- boundary="===============0493120648921503313=="
+ boundary="===============1952800360902237544=="
 
---===============0493120648921503313==
+--===============1952800360902237544==
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 7bit
 
@@ -20,7 +20,7 @@ Regards,
 S. Vedaganesan
 Continental Bus Body Builders Limited
 
---===============0493120648921503313==
+--===============1952800360902237544==
 Content-Type: text/html; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 MIME-Version: 1.0
@@ -29,9 +29,9 @@ MIME-Version: 1.0
 >Regards,<br>S. Vedaganesan<br>Continental Bus Body Builders Limited</p></bod=
 y></html>
 
---===============0493120648921503313==--
+--===============1952800360902237544==--
 
---===============8034293849882137191==
+--===============1163958139137470408==
 Content-Type: application/pdf
 Content-Transfer-Encoding: base64
 Content-Disposition: attachment; filename="220417-ACME-17.01.26.pdf"
@@ -49,9 +49,9 @@ MS44ODk4IF0gL1BhcmVudCA3IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0
 IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJh
 bnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago1IDAgb2JqCjw8Ci9QYWdlTW9kZSAv
 VXNlTm9uZSAvUGFnZXMgNyAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjYgMCBvYmoKPDwK
-L0F1dGhvciAoYW5vbnltb3VzKSAvQ3JlYXRpb25EYXRlIChEOjIwMjYwOTA5MjMyMzIxKzA1JzAw
-JykgL0NyZWF0b3IgKGFub255bW91cykgL0tleXdvcmRzICgpIC9Nb2REYXRlIChEOjIwMjYwOTA5
-MjMyMzIxKzA1JzAwJykgL1Byb2R1Y2VyIChSZXBvcnRMYWIgUERGIExpYnJhcnkgLSBcKG9wZW5z
+L0F1dGhvciAoYW5vbnltb3VzKSAvQ3JlYXRpb25EYXRlIChEOjIwMjYwOTEwMDA1NzE0KzA1JzAw
+JykgL0NyZWF0b3IgKGFub255bW91cykgL0tleXdvcmRzICgpIC9Nb2REYXRlIChEOjIwMjYwOTEw
+MDA1NzE0KzA1JzAwJykgL1Byb2R1Y2VyIChSZXBvcnRMYWIgUERGIExpYnJhcnkgLSBcKG9wZW5z
 b3VyY2VcKSkgCiAgL1N1YmplY3QgKHVuc3BlY2lmaWVkKSAvVGl0bGUgKHVudGl0bGVkKSAvVHJh
 cHBlZCAvRmFsc2UKPj4KZW5kb2JqCjcgMCBvYmoKPDwKL0NvdW50IDIgL0tpZHMgWyAzIDAgUiA0
 IDAgUiBdIC9UeXBlIC9QYWdlcwo+PgplbmRvYmoKOCAwIG9iago8PAovRmlsdGVyIFsgL0FTQ0lJ
@@ -87,9 +87,9 @@ ZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgMTAKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDYx
 IDAwMDAwIG4gCjAwMDAwMDAwOTIgMDAwMDAgbiAKMDAwMDAwMDE5OSAwMDAwMCBuIAowMDAwMDAw
 NDAyIDAwMDAwIG4gCjAwMDAwMDA2MDUgMDAwMDAgbiAKMDAwMDAwMDY3MyAwMDAwMCBuIAowMDAw
 MDAwOTM0IDAwMDAwIG4gCjAwMDAwMDA5OTkgMDAwMDAgbiAKMDAwMDAwMjAzOSAwMDAwMCBuIAp0
-cmFpbGVyCjw8Ci9JRCAKWzwzZjkyYzVhZGZjMDVkNzNjZWYyZmYwYmQ3Y2I1NzU4YT48M2Y5MmM1
-YWRmYzA1ZDczY2VmMmZmMGJkN2NiNTc1OGE+XQolIFJlcG9ydExhYiBnZW5lcmF0ZWQgUERGIGRv
+cmFpbGVyCjw8Ci9JRCAKWzwxOGRlMDk2ZjM4NDI5ZGJiM2U4NzNmYTFhODNiYTgxNT48MThkZTA5
+NmYzODQyOWRiYjNlODczZmExYTgzYmE4MTU+XQolIFJlcG9ydExhYiBnZW5lcmF0ZWQgUERGIGRv
 Y3VtZW50IC0tIGRpZ2VzdCAob3BlbnNvdXJjZSkKCi9JbmZvIDYgMCBSCi9Sb290IDUgMCBSCi9T
 aXplIDEwCj4+CnN0YXJ0eHJlZgoyNjM5CiUlRU9GCg==
 
---===============8034293849882137191==--
+--===============1163958139137470408==--

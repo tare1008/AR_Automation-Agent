@@ -1,16 +1,32 @@
-"""Canonical remittance payload — the single source of truth for the
-shape of extracted settlement data. Referenced by normalization,
-the review UI, and the stub backend."""
+"""Canonical remittance payload — one payload == one payment. The single
+source of truth for extracted settlement data; referenced by normalization,
+the review UI, and the stub backend.
+
+Sign convention: every ``Deduction.amount`` is non-negative — the amount
+subtracted. Per line item, ``invoice_amount - sum(deductions) == amount_paid``.
+A vendor credit note is ``Deduction{type: 'credit_note'}``, never a negative
+line amount.
+"""
 
 from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 _Currency = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)]
+
+DeductionType = Literal["tds", "credit_note", "advance_adjustment", "discount", "rounding", "other"]
+
+
+class Deduction(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: DeductionType
+    amount: Decimal = Field(ge=0, description="amount withheld/subtracted; always non-negative")
+    reason: str | None = None
 
 
 class Envelope(BaseModel):
@@ -18,6 +34,7 @@ class Envelope(BaseModel):
 
     extraction_id: str
     source_email_id: str
+    payment_index: int = Field(default=0, ge=0)
     vendor_guess: str | None = None
     extracted_at: datetime
     reviewed_by: str | None = None
@@ -28,11 +45,13 @@ class Header(BaseModel):
 
     payer_name: str
     payer_id: str | None = None
-    payment_reference: str
-    payment_date: date
+    payment_reference: str | None = None
+    payment_reference_type: str | None = None
+    payment_date: date | None = None
     payment_method: str | None = None
     currency: _Currency = "INR"
     total_paid_amount: Decimal
+    deductions: list[Deduction] = Field(default_factory=list)
 
 
 class LineItem(BaseModel):
@@ -41,9 +60,7 @@ class LineItem(BaseModel):
     invoice_number: str
     invoice_date: date | None = None
     invoice_amount: Decimal
-    discount_taken: Decimal | None = None
-    deduction_amount: Decimal | None = None
-    deduction_reason: str | None = None
+    deductions: list[Deduction] = Field(default_factory=list)
     amount_paid: Decimal
 
 
