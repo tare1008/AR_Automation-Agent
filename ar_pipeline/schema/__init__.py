@@ -1,5 +1,7 @@
 from ar_pipeline.schema.canonical import (
     CANONICAL_JSON_SCHEMA,
+    Deduction,
+    DeductionType,
     Envelope,
     Header,
     LineItem,
@@ -8,6 +10,8 @@ from ar_pipeline.schema.canonical import (
 
 __all__ = [
     "CANONICAL_JSON_SCHEMA",
+    "Deduction",
+    "DeductionType",
     "Envelope",
     "Header",
     "LineItem",

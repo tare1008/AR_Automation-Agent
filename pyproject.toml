@@ -40,7 +40,7 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["docs", "migrations/versions"]
+extend-exclude = ["docs", "migrations/versions", "tests/fixtures/_generator"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
@@ -48,6 +48,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 [tool.mypy]
 python_version = "3.12"
 packages = ["ar_pipeline", "stub_backend", "tests"]
+exclude = ["tests/fixtures/_generator/"]
 plugins = ["pydantic.mypy"]
 warn_unused_ignores = true
 warn_redundant_casts = true
