@@ -8,7 +8,11 @@ import pytest
 from reportlab.pdfgen import canvas
 from sqlalchemy import select
 
-from ar_pipeline.classify.classifier import classify_email, pdf_has_text_layer
+from ar_pipeline.classify.classifier import (
+    _classify_attachment,
+    classify_email,
+    pdf_has_text_layer,
+)
 from ar_pipeline.db.models import Attachment
 from ar_pipeline.storage import LocalBlobStore
 from tests.fixtures.loader import load_email
@@ -55,6 +59,44 @@ def _pdf_bytes_from_eml(prefix: str) -> bytes:
             assert isinstance(data, bytes)
             return data
     raise AssertionError("no pdf part found")
+
+
+def _attachment(content_type: str, filename: str, size: int = 1000) -> Attachment:
+    import uuid
+
+    return Attachment(
+        id=uuid.uuid4(),
+        email_id=uuid.uuid4(),
+        filename=filename,
+        content_type=content_type,
+        size=size,
+        blob_url="",
+        sha256="0" * 64,
+    )
+
+
+def test_legacy_xls_is_skipped(tmp_path):
+    store = LocalBlobStore(str(tmp_path))
+    spec = _classify_attachment(_attachment("application/vnd.ms-excel", "book.xls"), store)
+    assert spec.kind == "excel"
+    assert spec.skipped is True
+    assert spec.skip_reason == "legacy .xls not supported"
+
+
+def test_xlsx_stays_live(tmp_path):
+    store = LocalBlobStore(str(tmp_path))
+    ct = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    spec = _classify_attachment(_attachment(ct, "book.xlsx"), store)
+    assert spec.kind == "excel"
+    assert spec.skipped is False
+
+
+def test_unsupported_image_type_is_skipped(tmp_path):
+    store = LocalBlobStore(str(tmp_path))
+    spec = _classify_attachment(_attachment("image/tiff", "scan.tiff", size=900_000), store)
+    assert spec.kind == "image"
+    assert spec.skipped is True
+    assert "unsupported image type" in (spec.skip_reason or "")
 
 
 def test_pdf_has_text_layer_true_for_real_advice():

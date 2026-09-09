@@ -28,6 +28,16 @@ _BODY_REF = "body"
 _EXCEL_MARKERS = ("spreadsheetml", "excel", "ms-excel")
 _EXCEL_EXTS = (".xlsx", ".xls")
 
+# Media types Claude accepts in a live ``image`` block (plus the ``image/jpg``
+# alias); anything else is skipped rather than routed to the vision extractor.
+_SUPPORTED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+}
+
 _INLINE_IMAGE_RE = re.compile(r"(?i)(image\d+|logo|signature|outlook-)")
 _NUMERIC_CELL_RE = re.compile(r"[\d,]+\.\d{2}")
 
@@ -69,6 +79,16 @@ def _is_excel(content_type: str, filename: str) -> bool:
     return any(m in ct for m in _EXCEL_MARKERS) or name.endswith(_EXCEL_EXTS)
 
 
+def _is_legacy_xls(content_type: str, filename: str) -> bool:
+    """A legacy OLE2 ``.xls`` -- content-type ``application/vnd.ms-excel`` or a
+    ``.xls`` filename that is not ``.xlsx``. Only true OOXML is extractable."""
+    ct = content_type.lower()
+    name = filename.lower()
+    return ct == "application/vnd.ms-excel" or (
+        name.endswith(".xls") and not name.endswith(".xlsx")
+    )
+
+
 def _is_pdf(content_type: str, filename: str) -> bool:
     ct = content_type.lower()
     if ct == "application/pdf":
@@ -86,6 +106,10 @@ def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
     filename = att.filename or ""
 
     if _is_excel(content_type, filename):
+        if _is_legacy_xls(content_type, filename):
+            # openpyxl only reads OOXML (.xlsx); a legacy OLE2 .xls raises and
+            # would error the whole email.
+            return SourceSpec("excel", ref, skipped=True, skip_reason="legacy .xls not supported")
         return SourceSpec("excel", ref)
 
     if _is_pdf(content_type, filename):
@@ -94,6 +118,14 @@ def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
         return SourceSpec(kind, ref)
 
     if content_type.lower().startswith("image/"):
+        if content_type.lower() not in _SUPPORTED_IMAGE_TYPES:
+            # Claude rejects anything but jpeg/png/gif/webp in an image block.
+            return SourceSpec(
+                "image",
+                ref,
+                skipped=True,
+                skip_reason=f"unsupported image type {content_type}",
+            )
         below_threshold = att.size < _INLINE_IMAGE_MAX_SIZE and bool(
             _INLINE_IMAGE_RE.search(filename)
         )
