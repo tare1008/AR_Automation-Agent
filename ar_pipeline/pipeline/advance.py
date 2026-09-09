@@ -1,0 +1,169 @@
+"""Advance emails one pipeline state at a time: ``new -> classified -> extracted``.
+
+``advance_once`` pulls a batch of pending emails and moves each forward exactly
+one state. Every email is processed inside its own ``session.begin_nested()``
+savepoint so a failing extractor poisons only that email: its savepoint rolls
+back, the email is flipped to ``error`` on the live object (outside the rolled-
+back savepoint), and the batch continues. The caller owns the outer
+transaction -- ``advance_once`` never commits.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ar_pipeline.classify.classifier import classify_email
+from ar_pipeline.db.models import Attachment, Email, ExtractionSource, RawExtraction
+from ar_pipeline.extract.base import EXTRACTOR_VERSION, ExtractedContent
+from ar_pipeline.extract.body_text import extract_body_text
+from ar_pipeline.extract.excel import extract_excel
+from ar_pipeline.extract.html_table import extract_html_tables
+from ar_pipeline.extract.pdf import extract_pdf
+from ar_pipeline.extract.vision import VisionExtractor
+from ar_pipeline.storage import BlobStore
+
+_PENDING_STATUSES = ("new", "classified")
+
+
+@dataclass(frozen=True)
+class AdvanceStats:
+    classified: int = 0
+    extracted: int = 0
+    errored: int = 0
+
+
+def advance_once(
+    session: Session,
+    blob_store: BlobStore,
+    vision_extractor: VisionExtractor,
+    *,
+    batch: int = 20,
+) -> AdvanceStats:
+    emails = list(
+        session.scalars(
+            select(Email)
+            .where(Email.status.in_(_PENDING_STATUSES))
+            .order_by(Email.received_at.asc())
+            .limit(batch)
+        )
+    )
+
+    classified = extracted = errored = 0
+    for email in emails:
+        try:
+            with session.begin_nested():
+                result = _step(session, email, blob_store, vision_extractor)
+        except Exception as exc:  # savepoint already rolled back
+            email.status = "error"
+            email.error_detail = f"{type(exc).__name__}: {exc}"
+            errored += 1
+            continue
+
+        if result == "classified":
+            classified += 1
+        elif result == "extracted":
+            extracted += 1
+
+    return AdvanceStats(classified=classified, extracted=extracted, errored=errored)
+
+
+def _step(
+    session: Session,
+    email: Email,
+    blob_store: BlobStore,
+    vision_extractor: VisionExtractor,
+) -> str:
+    if email.status == "new":
+        return _classify(session, email, blob_store)
+    return _extract(session, email, blob_store, vision_extractor)
+
+
+def _classify(session: Session, email: Email, blob_store: BlobStore) -> str:
+    atts = list(session.scalars(select(Attachment).where(Attachment.email_id == email.id)))
+    for spec in classify_email(email, atts, blob_store):
+        session.add(
+            ExtractionSource(
+                email_id=email.id,
+                kind=spec.kind,
+                ref=spec.ref,
+                skipped=spec.skipped,
+                skip_reason=spec.skip_reason,
+            )
+        )
+    session.flush()
+    email.status = "classified"
+    session.flush()
+    return "classified"
+
+
+def _extract(
+    session: Session,
+    email: Email,
+    blob_store: BlobStore,
+    vision_extractor: VisionExtractor,
+) -> str:
+    sources = list(
+        session.scalars(select(ExtractionSource).where(ExtractionSource.email_id == email.id))
+    )
+    for src in sources:
+        if src.skipped:
+            continue
+        if _has_raw_extraction(session, src.id):
+            continue
+        content = _run_extractor(session, email, src, blob_store, vision_extractor)
+        session.add(
+            RawExtraction(
+                extraction_source_id=src.id,
+                payload=content.to_payload(),
+                extractor_version=EXTRACTOR_VERSION,
+            )
+        )
+        session.flush()
+
+    non_skipped = [s for s in sources if not s.skipped]
+    if all(_has_raw_extraction(session, s.id) for s in non_skipped):
+        email.status = "extracted"
+        session.flush()
+        return "extracted"
+    return "classified"
+
+
+def _has_raw_extraction(session: Session, source_id: uuid.UUID) -> bool:
+    return (
+        session.scalar(
+            select(RawExtraction.id).where(RawExtraction.extraction_source_id == source_id)
+        )
+        is not None
+    )
+
+
+def _run_extractor(
+    session: Session,
+    email: Email,
+    src: ExtractionSource,
+    blob_store: BlobStore,
+    vision_extractor: VisionExtractor,
+) -> ExtractedContent:
+    if src.ref == "body":
+        if src.kind == "body_table":
+            return extract_html_tables(email.body_html)
+        if src.kind == "body_text":
+            return extract_body_text(email.body_text, email.body_html)
+        raise ValueError(f"unsupported body source kind: {src.kind!r}")
+
+    att = session.get(Attachment, uuid.UUID(src.ref))
+    if att is None:
+        raise ValueError(f"extraction_source {src.id} references missing attachment {src.ref}")
+    data = blob_store.get(f"{att.email_id}/{att.id}/{att.filename}")
+
+    if src.kind == "excel":
+        return extract_excel(data)
+    if src.kind == "pdf_text":
+        return extract_pdf(data)
+    if src.kind in ("pdf_scanned", "image"):
+        return vision_extractor.extract_image(data, att.content_type)
+    raise ValueError(f"unsupported attachment source kind: {src.kind!r}")
