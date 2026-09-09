@@ -1,0 +1,46 @@
+From: SUNRISE EXTRUSIONS <banking@sunrise-extrusions.example>
+To: AR Remittances <ar-remittances@acmemetals.example>
+Subject: PAYMENT CONFIRMATION FOR EXTRUSIONS PRODUCT
+Date: Wed, 09 Apr 2025 00:00:00 -0000
+Message-ID: <605046317798@sunrise-extrusions.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============3071322320717541009=="
+
+--===============3071322320717541009==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Dear Sir,
+Payment confirmation for extrusions product.
+Regards,
+Sunrise Extrusions
+
+--===============3071322320717541009==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><p>Dear Sir,</p><p>Payment confirmation for extrusions product, a=
+s below.</p><p>Payment date: 08-04-2026 &nbsp; UTR: STBK52026040800971738</p>
+<table border=3D"1"><tr><td>Inv date</td><td>Inv number</td><td>Amount</td></=
+tr>
+<tr><td>29-Mar-26</td><td>SXE2510051648</td><td style=3D'text-align:right'>51=
+,332.46</td></tr><tr><td>29-Mar-26</td><td>SXE2510051649</td><td style=3D'tex=
+t-align:right'>5,01,808.11</td></tr><tr><td>29-Mar-26</td><td>SXE2510051652</=
+td><td style=3D'text-align:right'>43,500.90</td></tr><tr><td>29-Mar-26</td><t=
+d>SXE2510051653</td><td style=3D'text-align:right'>9,44,872.82</td></tr>
+<tr><td></td><td>Rounded total</td><td style=3D'text-align:right'>15,41,514.0=
+0</td></tr></table><p>Payment date: 13-04-2026 &nbsp; UTR: STBK52026041300482=
+210</p>
+<table border=3D"1"><tr><td>Inv date</td><td>Inv number</td><td>Amount</td></=
+tr>
+<tr><td>02-Apr-26</td><td>SXE2610000192</td><td style=3D'text-align:right'>4,=
+56,148.65</td></tr><tr><td>02-Apr-26</td><td>SXE2610000193</td><td style=3D't=
+ext-align:right'>1,32,368.02</td></tr><tr><td>02-Apr-26</td><td>SXE2610000194=
+</td><td style=3D'text-align:right'>4,72,763.98</td></tr><tr><td>02-Apr-26</t=
+d><td>SXE2610000200</td><td style=3D'text-align:right'>13,24,544.85</td></tr>
+<tr><td></td><td>Rounded total</td><td style=3D'text-align:right'>23,85,825.0=
+0</td></tr></table><p>Regards,<br>Sunrise Extrusions</p></body></html>
+
+--===============3071322320717541009==--

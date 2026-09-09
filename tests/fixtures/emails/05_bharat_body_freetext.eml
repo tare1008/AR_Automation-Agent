@@ -1,0 +1,70 @@
+From: BharatMetal <bharatmetal2020@example.com>
+To: AR Remittances <ar-remittances@acmemetals.example>
+Subject: RTGS DETAIL
+Date: Sat, 28 Mar 2026 00:00:00 -0000
+Message-ID: <991384060066@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============3390297004182098993=="
+
+--===============3390297004182098993==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Dear Sir,
+Pls find below the RTGS DETAIL made towards your INVOICE NO.
+
+BMT2510005615 DT 31.01.2026 = Rs.3033732.66
+LESS- TDS .1% = Rs. 2570.96
+LESS- Credit note for Jan-26 = Rs. 287858.00
+------------------------
+PAYMENT DONE Rs. 2743303.70
+-------------------------
+BMT2510005971 DT 24.02.2026 = Rs.1139531.88
+LESS- TDS .1% = Rs. 965.70
+LESS- Credit note for Feb-26 = Rs. 856480.00
+------------------------
+PAYMENT DONE Rs. 282086.18
+-------------------------
+
+Amount: INR. 3025389.88
+Transfer Type: RTGS
+Beneficiary Name: ACME METALS LTD
+Beneficiary Account: xxxxxxxxxxxx0000
+Unique Transaction Reference Number (UTR): STBK52026032800800086
+
+Regards
+Amit Agarwal
+
+--===============3390297004182098993==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+<html><body><pre>Dear Sir,
+Pls find below the RTGS DETAIL made towards your INVOICE NO.
+
+BMT2510005615 DT 31.01.2026 = Rs.3033732.66
+LESS- TDS .1% = Rs. 2570.96
+LESS- Credit note for Jan-26 = Rs. 287858.00
+------------------------
+PAYMENT DONE Rs. 2743303.70
+-------------------------
+BMT2510005971 DT 24.02.2026 = Rs.1139531.88
+LESS- TDS .1% = Rs. 965.70
+LESS- Credit note for Feb-26 = Rs. 856480.00
+------------------------
+PAYMENT DONE Rs. 282086.18
+-------------------------
+
+Amount: INR. 3025389.88
+Transfer Type: RTGS
+Beneficiary Name: ACME METALS LTD
+Beneficiary Account: xxxxxxxxxxxx0000
+Unique Transaction Reference Number (UTR): STBK52026032800800086
+
+Regards
+Amit Agarwal
+</pre></body></html>
+
+--===============3390297004182098993==--
