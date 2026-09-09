@@ -13,6 +13,9 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "httpx>=0.28",
     "msal>=1.38.0",
+    "pdfplumber>=0.11.10",
+    "beautifulsoup4>=4.15.0",
+    "lxml>=6.1.3",
 ]
 
 [dependency-groups]
@@ -26,6 +29,7 @@ dev = [
     "reportlab>=5.0.1",
     "openpyxl>=3.1.5",
     "types-openpyxl>=3.1.5.20260827",
+    "types-beautifulsoup4>=4.12.0.20250516",
 ]
 
 [tool.pytest.ini_options]
@@ -58,7 +62,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pgserver.*", "apscheduler.*", "msal.*", "reportlab.*"]
+module = ["pgserver.*", "apscheduler.*", "msal.*", "reportlab.*", "pdfplumber.*"]
 ignore_missing_imports = true
 
 [build-system]
