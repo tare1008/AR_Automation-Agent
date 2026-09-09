@@ -193,3 +193,38 @@ def test_payment_date_far_before_invoice_date_flags() -> None:
 def test_payment_date_far_in_future_flags() -> None:
     flags = validate_payload(_payload(header={"payment_date": date(2027, 6, 1)}))
     assert any("payment_date" in f and "after" in f for f in flags)
+
+
+def test_negative_invoice_amount_flag() -> None:
+    flags = validate_payload(
+        _payload(
+            line_items=[
+                LineItem(
+                    invoice_number="INV-1",
+                    invoice_amount=Decimal("-10.00"),
+                    amount_paid=Decimal("90.00"),
+                )
+            ]
+        )
+    )
+    assert any("negative invoice_amount" in f and "line 0" in f for f in flags)
+
+
+def test_negative_amount_paid_flag() -> None:
+    flags = validate_payload(
+        _payload(
+            line_items=[
+                LineItem(
+                    invoice_number="INV-1",
+                    invoice_amount=Decimal("100.00"),
+                    amount_paid=Decimal("-5.00"),
+                )
+            ]
+        )
+    )
+    assert any("negative amount_paid" in f and "line 0" in f for f in flags)
+
+
+def test_negative_total_paid_amount_flag() -> None:
+    flags = validate_payload(_payload(header={"total_paid_amount": Decimal("-1.00")}))
+    assert any("negative total_paid_amount" in f for f in flags)
