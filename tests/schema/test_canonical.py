@@ -92,6 +92,19 @@ def test_currency_must_be_three_letters():
         RemittancePayload.model_validate(bad)
 
 
+def test_currency_rejects_non_alphabetic():
+    bad = _valid_payload_dict()
+    bad["header"]["currency"] = "1N5"
+    with pytest.raises(ValidationError):
+        RemittancePayload.model_validate(bad)
+
+
+def test_currency_is_uppercased():
+    d = _valid_payload_dict()
+    d["header"]["currency"] = "inr"
+    assert RemittancePayload.model_validate(d).header.currency == "INR"
+
+
 def test_json_schema_is_dict_with_defs():
     assert isinstance(CANONICAL_JSON_SCHEMA, dict)
     assert CANONICAL_JSON_SCHEMA["title"] == "RemittancePayload"

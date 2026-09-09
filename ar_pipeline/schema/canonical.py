@@ -11,7 +11,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-_Currency = Annotated[str, StringConstraints(min_length=3, max_length=3, to_upper=True)]
+_Currency = Annotated[
+    str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)
+]
 
 
 class Envelope(BaseModel):
