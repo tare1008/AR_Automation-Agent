@@ -167,6 +167,15 @@ def test_poll_isolates_poison_message_and_advances_token(db_session, tmp_path):
     state = db_session.get(PollState, 1)
     assert state.delta_token == "delta:3"
 
+    # the poison message's savepoint was rolled back: it left no Email row and
+    # no half-ingested Attachment (blob_url still "").
+    emails = db_session.scalars(
+        select(Email.internet_message_id).order_by(Email.internet_message_id)
+    ).all()
+    assert emails == ["<g1@v.com>", "<g2@v.com>"]
+    blob_urls = db_session.scalars(select(Attachment.blob_url)).all()
+    assert blob_urls and all(url != "" for url in blob_urls)
+
 
 def test_poll_dedup_on_full_redelivery(db_session, tmp_path):
     graph = FakeGraphClient(
