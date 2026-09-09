@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     "apscheduler>=3.10,<4",
     "httpx>=0.28",
+    "msal>=1.38.0",
 ]
 
 [dependency-groups]
@@ -54,7 +55,7 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pgserver.*", "apscheduler.*"]
+module = ["pgserver.*", "apscheduler.*", "msal.*"]
 ignore_missing_imports = true
 
 [build-system]
