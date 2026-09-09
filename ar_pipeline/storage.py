@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ar_pipeline.config import get_settings
+
+if TYPE_CHECKING:
+    from ar_pipeline.db.models import Attachment
+
+
+def attachment_blob_key(att: Attachment) -> str:
+    """The blob-store key for an attachment: ``<email_id>/<attachment_id>/<filename>``.
+
+    One definition shared by the poller (write), the classifier and the
+    extraction step (read) so the key can never drift between them.
+    """
+    return f"{att.email_id}/{att.id}/{att.filename}"
 
 
 class BlobStore(Protocol):

@@ -26,6 +26,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Forward-only deployment assumption: this fails if any `kind='body_text'`
+    # rows already exist (the re-added CHECK constraint would reject them).
     op.drop_constraint("ck_extraction_source_kind", "extraction_source", type_="check")
     op.create_check_constraint(
         "ck_extraction_source_kind",

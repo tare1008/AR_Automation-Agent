@@ -10,12 +10,12 @@ from tests.extract.vision_fake import FakeVisionExtractor
 from tests.fixtures.loader import FIXTURE_NAMES, load_email
 
 MARKERS = {
-    "01_nordicauto_hsbc_pdf": "ACM2510006275",
-    "02_fluorochem_body_table": "FCI2510007033",
-    "03_contibus_pdf": "CBB2510004583",
-    "04_sunrise_body_multi_payment": "SXE2510051648",
-    "05_bharat_body_freetext": "STBK52026032800800086",
-    "06_zenith_excel": "ZCC2610000038",
+    "01_fwd_bank_advice_pdf": "ACM2510006275",
+    "02_fwd_body_table": "FCI2510007033",
+    "03_fwd_multiline_pdf": "CBB2510004583",
+    "04_direct_body_multi_payment": "SXE2510051648",
+    "05_direct_body_freetext": "STBK52026032800800086",
+    "06_direct_excel": "ZCC2610000038",
 }
 
 

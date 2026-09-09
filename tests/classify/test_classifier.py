@@ -1,6 +1,5 @@
 import email
 import email.policy
-import glob
 import io
 from pathlib import Path
 
@@ -15,16 +14,16 @@ from ar_pipeline.classify.classifier import (
 )
 from ar_pipeline.db.models import Attachment
 from ar_pipeline.storage import LocalBlobStore
-from tests.fixtures.loader import load_email
+from tests.fixtures.loader import EMAILS_DIR, load_email
 
 # name -> the set of (kind, skipped) tuples classify_email must produce
 EXPECTED = {
-    "01_nordicauto_hsbc_pdf": {("pdf_text", False), ("image", True)},
-    "02_fluorochem_body_table": {("body_table", False), ("image", True)},
-    "03_contibus_pdf": {("pdf_text", False)},
-    "04_sunrise_body_multi_payment": {("body_table", False)},
-    "05_bharat_body_freetext": {("body_text", False)},
-    "06_zenith_excel": {("excel", False)},
+    "01_fwd_bank_advice_pdf": {("pdf_text", False), ("image", True)},
+    "02_fwd_body_table": {("body_table", False), ("image", True)},
+    "03_fwd_multiline_pdf": {("pdf_text", False)},
+    "04_direct_body_multi_payment": {("body_table", False)},
+    "05_direct_body_freetext": {("body_text", False)},
+    "06_direct_excel": {("excel", False)},
 }
 
 
@@ -41,7 +40,7 @@ def test_classifier_on_fixtures(name, expected, db_session, tmp_path):
 
 def test_body_only_email_never_emits_a_body_and_attachment_dupe(db_session, tmp_path):
     store = LocalBlobStore(str(tmp_path))
-    email = load_email("06_zenith_excel", db_session, store)
+    email = load_email("06_direct_excel", db_session, store)
     db_session.flush()
     atts = list(db_session.scalars(select(Attachment)))
     specs = classify_email(email, atts, store)
@@ -50,7 +49,7 @@ def test_body_only_email_never_emits_a_body_and_attachment_dupe(db_session, tmp_
 
 
 def _pdf_bytes_from_eml(prefix: str) -> bytes:
-    path = glob.glob(f"tests/fixtures/emails/{prefix}_*.eml")[0]
+    path = next(EMAILS_DIR.glob(f"{prefix}_*.eml"))
     msg = email.message_from_bytes(Path(path).read_bytes(), policy=email.policy.default)
     for part in msg.walk():
         name = part.get_filename() or ""

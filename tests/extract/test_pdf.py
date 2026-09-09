@@ -8,8 +8,8 @@ def _pdf_bytes(name: str) -> bytes:
     return att.content
 
 
-def test_extract_pdf_nordicauto_single_page() -> None:
-    raw = extract_pdf(_pdf_bytes("01_nordicauto_hsbc_pdf"))
+def test_extract_pdf_single_page() -> None:
+    raw = extract_pdf(_pdf_bytes("01_fwd_bank_advice_pdf"))
 
     assert raw.meta["page_count"] == 1
     assert "Remittance amount: INR 6,633,624.61" in raw.text
@@ -17,8 +17,8 @@ def test_extract_pdf_nordicauto_single_page() -> None:
     assert "Other reference: GTBN52026021920531478" in raw.text
 
 
-def test_extract_pdf_contibus_two_pages() -> None:
-    raw = extract_pdf(_pdf_bytes("03_contibus_pdf"))
+def test_extract_pdf_two_pages() -> None:
+    raw = extract_pdf(_pdf_bytes("03_fwd_multiline_pdf"))
 
     assert raw.meta["page_count"] == 2
     assert "Total" in raw.text

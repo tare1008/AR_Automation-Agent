@@ -3,7 +3,7 @@ from tests.fixtures.loader import EMAILS_DIR, eml_to_graph
 
 
 def test_extract_body_text_bharat_freetext() -> None:
-    msg, _ = eml_to_graph(EMAILS_DIR / "05_bharat_body_freetext.eml")
+    msg, _ = eml_to_graph(EMAILS_DIR / "05_direct_body_freetext.eml")
     raw = extract_body_text(msg.body_text, msg.body_html)
 
     assert "PAYMENT DONE Rs. 2743303.70" in raw.text

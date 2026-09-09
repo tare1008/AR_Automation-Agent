@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ar_pipeline.db.models import Attachment, Email, PollState
 from ar_pipeline.ingest.client import DeltaExpired, GraphClient
 from ar_pipeline.ingest.types import GraphMessage
-from ar_pipeline.storage import BlobStore
+from ar_pipeline.storage import BlobStore, attachment_blob_key
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def _process_message(
         )
         session.add(attachment)
         session.flush()
-        attachment.blob_url = blob_store.put(f"{email.id}/{attachment.id}/{name}", att.content)
+        attachment.blob_url = blob_store.put(attachment_blob_key(attachment), att.content)
         n_att += 1
     return ("new", n_att)
 

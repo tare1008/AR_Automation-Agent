@@ -8,8 +8,8 @@ def _xlsx_bytes(name: str) -> bytes:
     return att.content
 
 
-def test_extract_excel_zenith() -> None:
-    raw = extract_excel(_xlsx_bytes("06_zenith_excel"))
+def test_extract_excel_template() -> None:
+    raw = extract_excel(_xlsx_bytes("06_direct_excel"))
 
     assert raw.meta["sheet_names"] == ["Sheet1"]
 

@@ -19,7 +19,7 @@ def store(tmp_path):
 
 
 def test_advance_once_classifies_then_extracts_body_email(db_session, store):
-    email = load_email("05_bharat_body_freetext", db_session, store)
+    email = load_email("05_direct_body_freetext", db_session, store)
 
     stats = advance_once(db_session, store, FakeVisionExtractor())
     assert isinstance(stats, AdvanceStats)
@@ -149,8 +149,8 @@ def _raw_for(session, source_id):
 
 
 def test_poison_extractor_is_isolated_per_email(db_session, store, monkeypatch):
-    excel_email = load_email("06_zenith_excel", db_session, store)
-    body_email = load_email("05_bharat_body_freetext", db_session, store)
+    excel_email = load_email("06_direct_excel", db_session, store)
+    body_email = load_email("05_direct_body_freetext", db_session, store)
 
     # first pass: classify both
     advance_once(db_session, store, FakeVisionExtractor())

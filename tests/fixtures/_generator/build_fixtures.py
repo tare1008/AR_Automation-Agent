@@ -54,7 +54,7 @@ def _add_related_image(m: EmailMessage, data: bytes, *, cid: str, filename: str)
     html_part.add_related(data, "image", "png", cid=cid, filename=filename)
 
 
-def f1_autoneum_hsbc_pdf(out: Path) -> None:
+def f1_fwd_bank_advice_pdf(out: Path) -> None:
     """Forwarded internal -> HSBC-style payment advice as a PDF attachment
     (native text) + an inline logo image. multipart/mixed>related>alternative."""
     pdf = io.BytesIO()
@@ -127,10 +127,10 @@ def f1_autoneum_hsbc_pdf(out: Path) -> None:
         subtype="octet-stream",
         filename="Payment_Advice.pdf",
     )
-    (out / "01_nordicauto_hsbc_pdf.eml").write_bytes(m.as_bytes())
+    (out / "01_fwd_bank_advice_pdf.eml").write_bytes(m.as_bytes())
 
 
-def f2_fluorochem_body_table(out: Path) -> None:
+def f2_fwd_body_table(out: Path) -> None:
     raw = [
         (1, "2-Feb-26", "FCI2510007033", "39.702", "1,452,299.16"),
         (2, "2-Feb-26", "FCI2510007039", "39.228", "1,434,960.24"),
@@ -186,10 +186,10 @@ def f2_fluorochem_body_table(out: Path) -> None:
         html,
     )
     _add_related_image(m, TINY_PNG, cid="sig01", filename="Outlook-signature.png")
-    (out / "02_fluorochem_body_table.eml").write_bytes(m.as_bytes())
+    (out / "02_fwd_body_table.eml").write_bytes(m.as_bytes())
 
 
-def f3_contibus_pdf(out: Path) -> None:
+def f3_fwd_multiline_pdf(out: Path) -> None:
     pdf = io.BytesIO()
     c = canvas.Canvas(pdf, pagesize=A4)
     data = [
@@ -251,10 +251,10 @@ def f3_contibus_pdf(out: Path) -> None:
         subtype="pdf",
         filename="220417-ACME-17.01.26.pdf",
     )
-    (out / "03_contibus_pdf.eml").write_bytes(m.as_bytes())
+    (out / "03_fwd_multiline_pdf.eml").write_bytes(m.as_bytes())
 
 
-def f4_sunrise_body_multi_payment(out: Path) -> None:
+def f4_direct_body_multi_payment(out: Path) -> None:
     def block(
         pay_date: str, utr: str, lines: list[tuple[str, str, str]], total_rounded: str
     ) -> str:
@@ -305,10 +305,10 @@ def f4_sunrise_body_multi_payment(out: Path) -> None:
         plain,
         html,
     )
-    (out / "04_sunrise_body_multi_payment.eml").write_bytes(m.as_bytes())
+    (out / "04_direct_body_multi_payment.eml").write_bytes(m.as_bytes())
 
 
-def f5_bharat_body_freetext(out: Path) -> None:
+def f5_direct_body_freetext(out: Path) -> None:
     plain = (
         "Dear Sir,\r\n"
         "Pls find below the RTGS DETAIL made towards your INVOICE NO.\r\n\r\n"
@@ -339,10 +339,10 @@ def f5_bharat_body_freetext(out: Path) -> None:
         plain,
         html,
     )
-    (out / "05_bharat_body_freetext.eml").write_bytes(m.as_bytes())
+    (out / "05_direct_body_freetext.eml").write_bytes(m.as_bytes())
 
 
-def f6_zenith_excel(out: Path) -> None:
+def f6_direct_excel(out: Path) -> None:
     wb = Workbook()
     ws = wb.active
     assert ws is not None
@@ -395,16 +395,16 @@ def f6_zenith_excel(out: Path) -> None:
         subtype="vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename="TDS DEDUCTION DETAIL AGAINST PAYMENT FRP 1.xlsx",
     )
-    (out / "06_zenith_excel.eml").write_bytes(m.as_bytes())
+    (out / "06_direct_excel.eml").write_bytes(m.as_bytes())
 
 
 BUILDERS = [
-    f1_autoneum_hsbc_pdf,
-    f2_fluorochem_body_table,
-    f3_contibus_pdf,
-    f4_sunrise_body_multi_payment,
-    f5_bharat_body_freetext,
-    f6_zenith_excel,
+    f1_fwd_bank_advice_pdf,
+    f2_fwd_body_table,
+    f3_fwd_multiline_pdf,
+    f4_direct_body_multi_payment,
+    f5_direct_body_freetext,
+    f6_direct_excel,
 ]
 
 

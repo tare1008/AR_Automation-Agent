@@ -7,8 +7,8 @@ def _body_html(name: str) -> str:
     return msg.body_html
 
 
-def test_extract_html_tables_fluorochem() -> None:
-    raw = extract_html_tables(_body_html("02_fluorochem_body_table"))
+def test_extract_html_tables_body_table() -> None:
+    raw = extract_html_tables(_body_html("02_fwd_body_table"))
 
     assert len(raw.tables) >= 1
     main = max(raw.tables, key=len)
@@ -25,8 +25,8 @@ def test_extract_html_tables_fluorochem() -> None:
     assert "STBK52026021813360279" in raw.text
 
 
-def test_extract_html_tables_sunrise_multi_payment() -> None:
-    raw = extract_html_tables(_body_html("04_sunrise_body_multi_payment"))
+def test_extract_html_tables_multi_payment() -> None:
+    raw = extract_html_tables(_body_html("04_direct_body_multi_payment"))
 
     table_count = raw.meta["table_count"]
     assert isinstance(table_count, int) and table_count >= 2

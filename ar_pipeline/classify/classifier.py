@@ -21,7 +21,7 @@ import pdfplumber
 from bs4 import BeautifulSoup
 
 from ar_pipeline.db.models import Attachment, Email
-from ar_pipeline.storage import BlobStore
+from ar_pipeline.storage import BlobStore, attachment_blob_key
 
 _BODY_REF = "body"
 
@@ -105,10 +105,6 @@ def _is_pdf(content_type: str, filename: str) -> bool:
     return ct == "application/octet-stream" and filename.lower().endswith(".pdf")
 
 
-def _blob_key(att: Attachment) -> str:
-    return f"{att.email_id}/{att.id}/{att.filename}"
-
-
 def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
     ref = str(att.id)
     content_type = att.content_type or ""
@@ -122,7 +118,7 @@ def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
         return SourceSpec("excel", ref)
 
     if _is_pdf(content_type, filename):
-        data = blob_store.get(_blob_key(att))
+        data = blob_store.get(attachment_blob_key(att))
         kind = "pdf_text" if pdf_has_text_layer(data) else "pdf_scanned"
         return SourceSpec(kind, ref)
 

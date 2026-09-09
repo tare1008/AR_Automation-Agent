@@ -2,12 +2,12 @@ From: SUNRISE EXTRUSIONS <banking@sunrise-extrusions.example>
 To: AR Remittances <ar-remittances@acmemetals.example>
 Subject: PAYMENT CONFIRMATION FOR EXTRUSIONS PRODUCT
 Date: Wed, 09 Apr 2025 00:00:00 -0000
-Message-ID: <605046317798@sunrise-extrusions.example>
+Message-ID: <765804792397@sunrise-extrusions.example>
 MIME-Version: 1.0
 Content-Type: multipart/alternative;
- boundary="===============3071322320717541009=="
+ boundary="===============8373934235542712075=="
 
---===============3071322320717541009==
+--===============8373934235542712075==
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 7bit
 
@@ -16,7 +16,7 @@ Payment confirmation for extrusions product.
 Regards,
 Sunrise Extrusions
 
---===============3071322320717541009==
+--===============8373934235542712075==
 Content-Type: text/html; charset="utf-8"
 Content-Transfer-Encoding: quoted-printable
 MIME-Version: 1.0
@@ -43,4 +43,4 @@ d><td>SXE2610000200</td><td style=3D'text-align:right'>13,24,544.85</td></tr>
 <tr><td></td><td>Rounded total</td><td style=3D'text-align:right'>23,85,825.0=
 0</td></tr></table><p>Regards,<br>Sunrise Extrusions</p></body></html>
 
---===============3071322320717541009==--
+--===============8373934235542712075==--

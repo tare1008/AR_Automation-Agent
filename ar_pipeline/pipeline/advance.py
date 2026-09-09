@@ -28,7 +28,7 @@ from ar_pipeline.extract.excel import extract_excel
 from ar_pipeline.extract.html_table import extract_html_tables
 from ar_pipeline.extract.pdf import extract_pdf
 from ar_pipeline.extract.vision import VisionExtractor
-from ar_pipeline.storage import BlobStore
+from ar_pipeline.storage import BlobStore, attachment_blob_key
 
 _PENDING_STATUSES = ("new", "classified")
 
@@ -194,7 +194,7 @@ def _run_extractor(
     att = session.get(Attachment, uuid.UUID(src.ref))
     if att is None:
         raise ValueError(f"extraction_source {src.id} references missing attachment {src.ref}")
-    data = blob_store.get(f"{att.email_id}/{att.id}/{att.filename}")
+    data = blob_store.get(attachment_blob_key(att))
 
     if src.kind == "excel":
         return extract_excel(data)
