@@ -17,17 +17,24 @@ class FakeGraphClient(GraphClient):
         self._messages = list(messages)
         self._attachments = attachments or {}
         self._issued: set[str] = set()
+        self._redeliver = False
 
     def add_message(self, message: GraphMessage) -> None:
         self._messages.append(message)
+
+    def redeliver_all(self) -> None:
+        """Test hook (I7): make the next ``fetch_delta`` of a known link return
+        every message again, so the poller's dedup paths see a re-delivery."""
+        self._redeliver = True
 
     def fetch_delta(self, delta_link: str | None) -> DeltaResult:
         if delta_link is None:
             start = 0
         elif delta_link in self._issued:
-            start = int(delta_link.split(":")[1])
+            start = 0 if self._redeliver else int(delta_link.split(":")[1])
         else:
             raise DeltaExpired(delta_link)
+        self._redeliver = False
         batch = self._messages[start:]
         new_link = f"delta:{len(self._messages)}"
         self._issued.add(new_link)

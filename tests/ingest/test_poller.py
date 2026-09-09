@@ -168,6 +168,34 @@ def test_poll_isolates_poison_message_and_advances_token(db_session, tmp_path):
     assert state.delta_token == "delta:3"
 
 
+def test_poll_dedup_on_full_redelivery(db_session, tmp_path):
+    graph = FakeGraphClient(
+        messages=[_msg("m1", "<a@v.com>"), _msg("m2", "<b@v.com>"), _msg("m3", "<c@v.com>")]
+    )
+    store = LocalBlobStore(str(tmp_path))
+    first = poll_once(graph, store, db_session)
+    db_session.flush()
+    assert first.new_emails == 3
+
+    graph.redeliver_all()
+    second = poll_once(graph, store, db_session)
+    db_session.flush()
+
+    assert second.new_emails == 0
+    assert second.duplicates == 3
+    assert len(db_session.scalars(select(Email)).all()) == 3
+
+
+def test_poll_dedup_within_a_single_batch(db_session, tmp_path):
+    graph = FakeGraphClient(messages=[_msg("m1", "<dup@v.com>"), _msg("m2", "<dup@v.com>")])
+    stats = poll_once(graph, LocalBlobStore(str(tmp_path)), db_session)
+    db_session.flush()
+
+    assert stats.new_emails == 1
+    assert stats.duplicates == 1
+    assert len(db_session.scalars(select(Email)).all()) == 1
+
+
 def test_poll_resyncs_on_delta_expired(db_session, tmp_path):
     graph = FakeGraphClient(messages=[_msg("m1", "<a@v.com>")])
     # seed a stale token
