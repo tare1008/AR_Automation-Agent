@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -18,7 +18,7 @@ def _valid_payload_dict():
             "extraction_id": "ext-1",
             "source_email_id": "email-1",
             "vendor_guess": "Acme Corp",
-            "extracted_at": datetime(2026, 9, 9, tzinfo=timezone.utc).isoformat(),
+            "extracted_at": datetime(2026, 9, 9, tzinfo=UTC).isoformat(),
             "reviewed_by": None,
         },
         "header": {

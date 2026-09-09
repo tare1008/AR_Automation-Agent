@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings>=2.6",
     "apscheduler>=3.10,<4",
     "httpx>=0.28",
+    "msal>=1.38.0",
 ]
 
 [dependency-groups]
@@ -20,6 +21,8 @@ dev = [
     "pytest-cov>=6.0",
     "pytest-asyncio>=0.24",
     "pgserver>=0.1.4",
+    "ruff>=0.16.6",
+    "mypy>=2.3.1",
 ]
 
 [tool.pytest.ini_options]
@@ -33,6 +36,27 @@ filterwarnings = [
     "ignore:Using `httpx` with `starlette.testclient` is deprecated",
     "ignore:The anyio.abc.BlockingPortal alias is deprecated",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs", "migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["ar_pipeline", "stub_backend", "tests"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["pgserver.*", "apscheduler.*", "msal.*"]
+ignore_missing_imports = true
 
 [build-system]
 requires = ["hatchling"]

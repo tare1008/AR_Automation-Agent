@@ -8,7 +8,9 @@ log = logging.getLogger(__name__)
 
 
 def poll_inbox() -> None:
-    log.info("poll_inbox: no-op")
+    from ar_pipeline.ingest.service import run_poll
+
+    run_poll()
     return None
 
 

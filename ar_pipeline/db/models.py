@@ -49,9 +49,7 @@ class PollState(Base):
     __tablename__ = "poll_state"
 
     # singleton row; id is always 1
-    id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=False, default=1
-    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False, default=1)
     delta_token: Mapped[str | None] = mapped_column(Text)
     last_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     __table_args__ = (CheckConstraint("id = 1", name="poll_state_singleton"),)
@@ -68,14 +66,10 @@ class Email(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     body_html: Mapped[str] = mapped_column(Text, default="")
     body_text: Mapped[str] = mapped_column(Text, default="")
-    raw_headers: Mapped[dict] = mapped_column(
-        MutableDict.as_mutable(JSONB), default=dict
-    )
+    raw_headers: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSONB), default=dict)
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     error_detail: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     attachments: Mapped[list[Attachment]] = relationship(back_populates="email")
 
@@ -136,18 +130,14 @@ class Extraction(Base):
     canonical: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSONB), default=dict)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     is_remittance: Mapped[bool] = mapped_column(default=True)
-    validation_flags: Mapped[list] = mapped_column(
-        MutableList.as_mutable(JSONB), default=list
-    )
+    validation_flags: Mapped[list] = mapped_column(MutableList.as_mutable(JSONB), default=list)
     llm_model: Mapped[str] = mapped_column(String(100), default="")
     prompt_version: Mapped[str] = mapped_column(String(50), default="")
     raw_llm_response: Mapped[dict | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(String(20), default="pending_review")
     reviewed_by: Mapped[str | None] = mapped_column(String(320))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         CheckConstraint(_in("status", EXTRACTION_STATUSES), name="ck_extraction_status"),
@@ -162,25 +152,19 @@ class ExtractionEdit(Base):
     __tablename__ = "extraction_edit"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    extraction_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("extraction.id"), index=True
-    )
+    extraction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("extraction.id"), index=True)
     field_path: Mapped[str] = mapped_column(Text)
     old_value: Mapped[str | None] = mapped_column(Text)
     new_value: Mapped[str | None] = mapped_column(Text)
     edited_by: Mapped[str] = mapped_column(String(320))
-    edited_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    edited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Delivery(Base):
     __tablename__ = "delivery"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    extraction_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("extraction.id"), index=True
-    )
+    extraction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("extraction.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     attempts: Mapped[int] = mapped_column(default=0)
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -201,7 +185,5 @@ class Vendor(Base):
     name: Mapped[str] = mapped_column(Text)
     sender_domains: Mapped[list[str]] = mapped_column(ARRAY(String(255)), default=list)
     format_hint: Mapped[str | None] = mapped_column(Text)
-    column_hints: Mapped[dict] = mapped_column(
-        MutableDict.as_mutable(JSONB), default=dict
-    )
+    column_hints: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSONB), default=dict)
     active: Mapped[bool] = mapped_column(default=True)

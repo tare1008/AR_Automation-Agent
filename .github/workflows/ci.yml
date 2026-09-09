@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install the pinned Python
+        run: uv python install  # reads .python-version (3.12)
+      - run: uv sync --all-extras --dev
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy  # packages come from [tool.mypy] (ar_pipeline, stub_backend, tests)
+      - run: uv run pytest -q

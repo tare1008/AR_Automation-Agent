@@ -17,18 +17,14 @@ def ensure_server() -> pgserver.PostgresServer:
     PGDATA.mkdir(exist_ok=True)
     server = pgserver.get_server(str(PGDATA))
     for name in ("ar_pipeline", "ar_pipeline_test"):
-        exists = server.psql(
-            f"SELECT 1 FROM pg_database WHERE datname = '{name}'"
-        ).strip()
+        exists = server.psql(f"SELECT 1 FROM pg_database WHERE datname = '{name}'").strip()
         if "1" not in exists:
             server.psql(f"CREATE DATABASE {name}")
     return server
 
 
 def uri_for(server: pgserver.PostgresServer, database: str) -> str:
-    return server.get_uri(database=database).replace(
-        "postgresql://", "postgresql+psycopg://", 1
-    )
+    return server.get_uri(database=database).replace("postgresql://", "postgresql+psycopg://", 1)
 
 
 if __name__ == "__main__":
