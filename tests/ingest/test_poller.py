@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from ar_pipeline.db.models import Attachment, Email, PollState
-from ar_pipeline.ingest.poller import PollStats, poll_once, sender_domain
+from ar_pipeline.ingest.poller import PollStats, _basename, poll_once, sender_domain
 from ar_pipeline.ingest.types import GraphAttachment, GraphMessage
 from ar_pipeline.storage import LocalBlobStore
 from tests.ingest.fakes import FakeGraphClient
@@ -73,7 +73,7 @@ def test_poll_downloads_and_stores_attachments(db_session, tmp_path):
     row = db_session.scalar(select(Attachment))
     assert row.filename == "s.xlsx"
     assert row.sha256 == store.sha256(b"abc")
-    assert store.get(f"{row.email_id}/s.xlsx") == b"abc"
+    assert store.get(f"{row.email_id}/{row.id}/s.xlsx") == b"abc"
 
 
 def test_poll_skips_removed_messages(db_session, tmp_path):
@@ -81,6 +81,91 @@ def test_poll_skips_removed_messages(db_session, tmp_path):
     stats = poll_once(graph, LocalBlobStore(str(tmp_path)), db_session)
     assert stats.removed == 1
     assert stats.new_emails == 0
+
+
+def test_basename_strips_paths_and_dots():
+    assert _basename("../../../etc/passwd") == "passwd"
+    assert _basename(".hidden") == "hidden"
+    assert _basename("") == "attachment"
+    assert _basename("   ") == "attachment"
+
+
+def test_poll_same_name_attachments_get_distinct_blobs(db_session, tmp_path):
+    atts = [
+        GraphAttachment(name="image001.png", content_type="image/png", size=3, content=b"AAA"),
+        GraphAttachment(name="image001.png", content_type="image/png", size=3, content=b"BBB"),
+    ]
+    graph = FakeGraphClient(messages=[_msg("m1", "<a@v.com>")], attachments={"m1": atts})
+    store = LocalBlobStore(str(tmp_path))
+    stats = poll_once(graph, store, db_session)
+    db_session.flush()
+
+    assert stats.attachments == 2
+    rows = db_session.scalars(select(Attachment)).all()
+    assert len(rows) == 2
+    urls = {r.blob_url for r in rows}
+    assert len(urls) == 2
+    by_sha = {r.sha256: r for r in rows}
+    assert (
+        store.get(
+            f"{by_sha[store.sha256(b'AAA')].email_id}/{by_sha[store.sha256(b'AAA')].id}/image001.png"
+        )
+        == b"AAA"
+    )
+    assert (
+        store.get(
+            f"{by_sha[store.sha256(b'BBB')].email_id}/{by_sha[store.sha256(b'BBB')].id}/image001.png"
+        )
+        == b"BBB"
+    )
+
+
+def test_poll_inline_only_attachments_are_downloaded(db_session, tmp_path):
+    att = GraphAttachment(name="cid.png", content_type="image/png", size=3, content=b"abc")
+    graph = FakeGraphClient(
+        messages=[_msg("m1", "<a@v.com>", has_att=False)], attachments={"m1": [att]}
+    )
+    stats = poll_once(graph, LocalBlobStore(str(tmp_path)), db_session)
+    db_session.flush()
+    assert stats.attachments == 1
+
+
+def test_poll_empty_internet_message_id_is_skipped(db_session, tmp_path):
+    graph = FakeGraphClient(messages=[_msg("m1", "")])
+    stats = poll_once(graph, LocalBlobStore(str(tmp_path)), db_session)
+    db_session.flush()
+    assert stats.new_emails == 0
+    assert stats.failed == 1
+    assert db_session.scalars(select(Email)).all() == []
+
+
+class _ExplodingBlobStore(LocalBlobStore):
+    def put(self, key: str, data: bytes) -> str:
+        if b"poison" in data:
+            raise ValueError("hostile key")
+        return super().put(key, data)
+
+
+def test_poll_isolates_poison_message_and_advances_token(db_session, tmp_path):
+    good_att = GraphAttachment(name="ok.pdf", content_type="application/pdf", size=2, content=b"ok")
+    bad_att = GraphAttachment(
+        name="p.pdf", content_type="application/pdf", size=6, content=b"poison"
+    )
+    graph = FakeGraphClient(
+        messages=[
+            _msg("good", "<g1@v.com>"),
+            _msg("poison", "<p1@v.com>"),
+            _msg("good2", "<g2@v.com>"),
+        ],
+        attachments={"good": [good_att], "poison": [bad_att]},
+    )
+    stats = poll_once(graph, _ExplodingBlobStore(str(tmp_path)), db_session)
+    db_session.flush()
+
+    assert stats.new_emails == 2
+    assert stats.failed == 1
+    state = db_session.get(PollState, 1)
+    assert state.delta_token == "delta:3"
 
 
 def test_poll_resyncs_on_delta_expired(db_session, tmp_path):

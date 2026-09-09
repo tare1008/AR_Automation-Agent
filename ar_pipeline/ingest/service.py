@@ -21,11 +21,12 @@ def run_poll() -> PollStats | None:
     with get_session() as session:
         stats = poll_once(graph, blob_store, session)
     log.info(
-        "poll_inbox: %d new, %d attachments, %d dup, %d removed%s",
+        "poll_inbox: %d new, %d attachments, %d dup, %d removed, %d failed%s",
         stats.new_emails,
         stats.attachments,
         stats.duplicates,
         stats.removed,
+        stats.failed,
         " (resynced)" if stats.resynced else "",
     )
     return stats

@@ -31,7 +31,9 @@ def test_run_poll_invokes_poll_once(monkeypatch):
 
     def _fake_poll_once(graph, blob, session):
         calls["hit"] = True
-        return PollStats(new_emails=1, attachments=0, duplicates=0, removed=0, resynced=False)
+        return PollStats(
+            new_emails=1, attachments=0, duplicates=0, removed=0, failed=0, resynced=False
+        )
 
     monkeypatch.setattr("ar_pipeline.ingest.service.poll_once", _fake_poll_once)
 
