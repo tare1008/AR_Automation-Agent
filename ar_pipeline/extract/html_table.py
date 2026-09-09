@@ -23,6 +23,11 @@ def extract_html_tables(body_html: str) -> ExtractedContent:
     for table in soup.find_all("table"):
         if not isinstance(table, Tag):
             continue
+        # Skip an outer wrapper table that nests a <table>; the inner table is
+        # emitted on its own, so iterating the wrapper's rows recursively would
+        # duplicate the inner rows.
+        if table.find("table"):
+            continue
         rows: list[list[str]] = []
         for tr in table.find_all("tr"):
             if not isinstance(tr, Tag):

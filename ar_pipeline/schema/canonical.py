@@ -1,6 +1,12 @@
 """Canonical remittance payload — one payload == one payment. The single
 source of truth for extracted settlement data; referenced by normalization,
-the review UI, and the stub backend."""
+the review UI, and the stub backend.
+
+Sign convention: every ``Deduction.amount`` is non-negative — the amount
+subtracted. Per line item, ``invoice_amount - sum(deductions) == amount_paid``.
+A vendor credit note is ``Deduction{type: 'credit_note'}``, never a negative
+line amount.
+"""
 
 from __future__ import annotations
 
@@ -19,7 +25,7 @@ class Deduction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     type: DeductionType
-    amount: Decimal
+    amount: Decimal = Field(ge=0, description="amount withheld/subtracted; always non-negative")
     reason: str | None = None
 
 
@@ -28,7 +34,7 @@ class Envelope(BaseModel):
 
     extraction_id: str
     source_email_id: str
-    payment_index: int = 0
+    payment_index: int = Field(default=0, ge=0)
     vendor_guess: str | None = None
     extracted_at: datetime
     reviewed_by: str | None = None

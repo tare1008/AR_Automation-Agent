@@ -77,6 +77,18 @@ def test_bad_deduction_type_rejected():
         Deduction.model_validate({"type": "vat", "amount": "1.00"})
 
 
+def test_negative_deduction_amount_rejected():
+    with pytest.raises(ValidationError):
+        Deduction.model_validate({"type": "tds", "amount": "-1.00"})
+
+
+def test_negative_payment_index_rejected():
+    d = _valid_payload_dict()
+    d["envelope"]["payment_index"] = -1
+    with pytest.raises(ValidationError):
+        RemittancePayload.model_validate(d)
+
+
 def test_currency_defaults_to_inr_and_uppercases():
     h = Header(
         payer_name="X", payment_reference=None, payment_date=None, total_paid_amount=Decimal("1.00")

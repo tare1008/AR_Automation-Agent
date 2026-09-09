@@ -38,8 +38,17 @@ _SUPPORTED_IMAGE_TYPES = {
     "image/webp",
 }
 
-_INLINE_IMAGE_RE = re.compile(r"(?i)(image\d+|logo|signature|outlook-)")
-_NUMERIC_CELL_RE = re.compile(r"[\d,]+\.\d{2}")
+# A "strong" inline-image name (logo / signature / Outlook block) is skipped
+# regardless of size; a bare ``imageNNN`` is only skipped when also small.
+_STRONG_INLINE_IMAGE_RE = re.compile(r"(?i)(logo|signature|outlook-)")
+_WEAK_INLINE_IMAGE_RE = re.compile(r"(?i)image\d+")
+
+# Money-looking cell: a thousands-grouped number (Western or Indian grouping,
+# optional decimals) OR a plain 2dp decimal. A dotted date like ``19.02.2026``
+# no longer matches (the lookarounds reject a run bracketed by more digits/dots).
+_NUMERIC_CELL_RE = re.compile(
+    r"(?<!\d[./])\b\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?\b|(?<![\d.])\d+\.\d{2}(?![.\d])"
+)
 
 _INLINE_IMAGE_MAX_SIZE = 25_000
 _PDF_TEXT_MIN_CHARS = 20
@@ -126,10 +135,11 @@ def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
                 skipped=True,
                 skip_reason=f"unsupported image type {content_type}",
             )
-        below_threshold = att.size < _INLINE_IMAGE_MAX_SIZE and bool(
-            _INLINE_IMAGE_RE.search(filename)
-        )
-        if below_threshold:
+        if _STRONG_INLINE_IMAGE_RE.search(filename):
+            return SourceSpec("image", ref, skipped=True, skip_reason="inline logo/signature image")
+        # ``Attachment.size`` from Graph is the base64-inflated MIME-part length
+        # (~1.37x the raw bytes), so this threshold is approximate.
+        if att.size < _INLINE_IMAGE_MAX_SIZE and _WEAK_INLINE_IMAGE_RE.search(filename):
             return SourceSpec(
                 "image", ref, skipped=True, skip_reason="inline image below threshold"
             )
@@ -158,6 +168,10 @@ def _has_numeric_table(body_html: str) -> bool:
         return False
     soup = BeautifulSoup(body_html, "lxml")
     for table in soup.find_all("table"):
+        # Skip an outer wrapper table with a nested <table>; the inner one is
+        # counted on its own and we would otherwise double-count its cells.
+        if table.find("table"):
+            continue
         cells = table.find_all(["td", "th"])
         numeric = sum(1 for c in cells if _NUMERIC_CELL_RE.search(c.get_text()))
         if numeric >= 2:
