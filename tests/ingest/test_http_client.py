@@ -3,7 +3,12 @@ import base64
 import httpx
 import pytest
 
-from ar_pipeline.ingest.client import DeltaExpired, HttpGraphClient
+from ar_pipeline.ingest.client import (
+    DeltaExpired,
+    GraphProtocolError,
+    GraphThrottled,
+    HttpGraphClient,
+)
 
 
 class _Auth:
@@ -101,6 +106,88 @@ def test_fetch_delta_retries_on_429_then_succeeds():
     result = _client(handler).fetch_delta(None)
     assert result.delta_link.endswith("/DELTA")
     assert state["n"] == 2
+
+
+def test_fetch_delta_raises_when_no_delta_link(monkeypatch):
+    monkeypatch.setattr("ar_pipeline.ingest.client.time.sleep", lambda _s: None)
+
+    def handler(request):
+        return httpx.Response(200, json={"value": [_message("m1", "<a@v.com>")]})
+
+    with pytest.raises(GraphProtocolError):
+        _client(handler).fetch_delta(None)
+
+
+def test_fetch_delta_retries_on_500_then_succeeds(monkeypatch):
+    monkeypatch.setattr("ar_pipeline.ingest.client.time.sleep", lambda _s: None)
+    state = {"n": 0}
+
+    def handler(request):
+        state["n"] += 1
+        if state["n"] == 1:
+            return httpx.Response(503, json={})
+        return httpx.Response(
+            200,
+            json={"value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/DELTA"},
+        )
+
+    result = _client(handler).fetch_delta(None)
+    assert result.delta_link.endswith("/DELTA")
+    assert state["n"] == 2
+
+
+def test_fetch_delta_raises_graph_throttled_after_budget(monkeypatch):
+    monkeypatch.setattr("ar_pipeline.ingest.client.time.sleep", lambda _s: None)
+
+    def handler(request):
+        return httpx.Response(429, headers={"Retry-After": "not-a-number"}, json={})
+
+    with pytest.raises(GraphThrottled):
+        _client(handler).fetch_delta(None)
+
+
+def test_parse_message_tolerates_missing_received_date():
+    def handler(request):
+        item = _message("m1", "<a@v.com>")
+        del item["receivedDateTime"]
+        return httpx.Response(
+            200,
+            json={"value": [item], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/DELTA"},
+        )
+
+    result = _client(handler).fetch_delta(None)
+    assert result.messages[0].received_at is not None
+
+
+def test_download_attachments_skips_file_attachment_without_content_bytes():
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "value": [
+                    {
+                        "@odata.type": "#microsoft.graph.fileAttachment",
+                        "name": "big.pdf",
+                        "contentType": "application/pdf",
+                        "size": 9999999,
+                    }
+                ]
+            },
+        )
+
+    assert _client(handler).download_attachments("m1") == []
+
+
+def test_download_attachments_url_encodes_message_id():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        return httpx.Response(200, json={"value": []})
+
+    _client(handler).download_attachments("AAA/BBB+CC=")
+    assert "AAA/BBB+CC=" not in seen["url"]
+    assert "AAA%2FBBB%2BCC%3D" in seen["url"]
 
 
 def test_download_attachments_decodes_file_attachments():
