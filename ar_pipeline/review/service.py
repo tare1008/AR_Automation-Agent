@@ -4,6 +4,7 @@ never commits — the request-scoped ``get_db`` dependency owns the transaction.
 
 from __future__ import annotations
 
+import json
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -98,6 +99,31 @@ def _extraction_outcome(ext: Extraction) -> str:
     if ext.status == "rejected":
         return "rejected"
     return "superseded"
+
+
+@dataclass(frozen=True)
+class ExtractionView:
+    extraction: Extraction
+    email: Email
+    outcome: str
+    delivery: str
+    canonical_json: str
+
+
+def load_extraction_view(session: Session, extraction_id: uuid.UUID) -> ExtractionView:
+    ext = session.get(Extraction, extraction_id)
+    if ext is None:
+        raise ReviewError("extraction not found")
+    email = session.get(Email, ext.email_id)
+    assert email is not None  # FK guarantees it
+    delivery = session.scalar(select(Delivery.status).where(Delivery.extraction_id == ext.id))
+    return ExtractionView(
+        extraction=ext,
+        email=email,
+        outcome=_extraction_outcome(ext),
+        delivery=delivery or "—",
+        canonical_json=json.dumps(ext.canonical, indent=2, sort_keys=False, default=str),
+    )
 
 
 def list_journey(session: Session) -> list[JourneyRow]:

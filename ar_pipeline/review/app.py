@@ -169,6 +169,25 @@ def resend_delivery_action(
     return RedirectResponse("/review/errors?flash=Resend+queued", status_code=303)
 
 
+@router.get("/extraction/{extraction_id}", response_class=HTMLResponse)
+def extraction_view_page(
+    request: Request,
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, load_extraction_view
+
+    try:
+        view = load_extraction_view(session, extraction_id)
+    except ReviewError:
+        raise HTTPException(status_code=404, detail="not found") from None
+
+    if request.query_params.get("format") == "json":
+        return Response(view.canonical_json, media_type="application/json")
+    return _render(request, "extraction.html", user=user, view=view)
+
+
 @router.post("/{extraction_id}/edit")
 async def edit_action(
     request: Request,

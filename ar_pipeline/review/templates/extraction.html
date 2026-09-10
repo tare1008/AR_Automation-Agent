@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ view.email.subject }} — JSON — AR Review{% endblock %}
+{% block content %}
+<p><a href="/review">&larr; Journey</a></p>
+<h1>{{ view.email.subject }}</h1>
+<p class="meta">From {{ view.email.sender_address }} ·
+   received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·
+   confidence {{ "%.2f"|format(view.extraction.confidence) if view.extraction.confidence is not none else "—" }}</p>
+
+<p>
+  {% if view.outcome in ("auto-approved", "approved") %}
+    <span class="badge ok">{{ view.outcome }}</span>
+  {% elif view.outcome == "awaiting review" %}
+    <span class="badge warn">{{ view.outcome }}</span>
+  {% elif view.outcome in ("rejected", "not a remittance") %}
+    <span class="badge bad">{{ view.outcome }}</span>
+  {% else %}
+    <span class="badge">{{ view.outcome }}</span>
+  {% endif %}
+  {% if view.delivery == "delivered" %}<span class="badge ok">delivered</span>
+  {% elif view.delivery == "failed" %}<span class="badge bad">failed</span>
+  {% elif view.delivery == "pending" %}<span class="badge warn">pending</span>
+  {% else %}<span class="badge">delivery: {{ view.delivery }}</span>
+  {% endif %}
+</p>
+
+{% for f in view.extraction.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}
+
+{% if view.extraction.status == "pending_review" %}
+<p><a href="/review/{{ view.extraction.id }}">Open in review editor</a></p>
+{% endif %}
+
+<h2>Canonical JSON</h2>
+<p><a href="?format=json">raw</a></p>
+<pre class="raw">{{ view.canonical_json }}</pre>
+{% endblock %}
