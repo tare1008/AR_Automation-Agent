@@ -39,6 +39,14 @@ _INVOICE_RE = re.compile(
     r"\b(?:INV|BILL)(?=[\s:#/.-]|\d)[\s:#/.-]*((?=[A-Za-z0-9/-]*\d)[A-Za-z0-9][A-Za-z0-9/-]{1,})",
     re.I,
 )
+# fallback: an "invoice no" / "inv number" / "bill no" LABEL (not attached
+# to an id, e.g. a table header cell: "Invoice Number" / "Bill No"), then
+# the first code-shaped token (letters immediately followed by >=6 digits,
+# the usual vendor invoice-id shape: "ACM2510006275") within a short
+# window after it.
+_INVOICE_LABEL_RE = re.compile(r"\b(?:invoice|inv|bill)\s*(?:no\.?|number|#)", re.I)
+_CODE_RE = re.compile(r"\b[A-Za-z]{2,6}\d{6,}\b")
+_LABEL_WINDOW = 200
 
 
 def _amounts(text: str) -> list[Decimal]:
@@ -73,7 +81,15 @@ def _reference(text: str) -> tuple[str | None, str | None]:
 
 def _invoice_number(text: str) -> str:
     m = _INVOICE_RE.search(text)
-    return m.group(1) if m else ""
+    if m:
+        return m.group(1)
+    label = _INVOICE_LABEL_RE.search(text)
+    if label:
+        window = text[label.end() : label.end() + _LABEL_WINDOW]
+        code = _CODE_RE.search(window)
+        if code:
+            return code.group(0)
+    return ""
 
 
 def _draft(text: str) -> dict[str, object]:

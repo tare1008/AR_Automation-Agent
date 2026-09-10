@@ -49,6 +49,16 @@ def test_does_not_mistake_the_word_invoice_for_an_id():
         assert _parse(f"total 5,000.00\n{text}").payments[0].line_items[0].invoice_number == ""
 
 
+def test_invoice_number_falls_back_to_labeled_table_header_code():
+    out = _parse("Invoice Number\n1 | 2-Feb-26 | FCI2510007033 | 39.702")
+    assert out.payments[0].line_items[0].invoice_number == "FCI2510007033"
+
+
+def test_invoice_number_falls_back_to_bill_no_label():
+    out = _parse("Bill No: ACM2510006275\ndated 3-Feb-26")
+    assert out.payments[0].line_items[0].invoice_number == "ACM2510006275"
+
+
 def test_no_amounts_still_produces_a_reviewable_draft():
     out = _parse("Subject: FW: remittance\n\nplease find attached")
     p = out.payments[0]
