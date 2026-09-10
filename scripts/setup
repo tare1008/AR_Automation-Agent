@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-shot local setup: dependencies, .env, embedded Postgres, schema.
+# One-shot local setup: dependencies, .env, embedded Postgres, schema, demo defaults.
 # Linux / macOS. A Windows machine needs WSL2 first.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -17,25 +17,53 @@ if [ ! -f .env ]; then
   cp .env.example .env
 fi
 
-echo "==> starting embedded Postgres and writing its URLs into .env"
-uv run python scripts/dev_db.py --write-env
+echo "==> embedded Postgres + alembic upgrade head"
+uv run python scripts/dev_db.py migrate
 
-echo "==> alembic upgrade head"
-uv run alembic upgrade head
+echo "==> writing demo defaults into .env"
+uv run python - <<'PY'
+import pathlib
+import secrets
+
+path = pathlib.Path(".env")
+fill_if_blank = {
+    "BACKEND_URL": "http://localhost:9000",
+    "REVIEW_AUTH_SECRET": "demo",
+    "REVIEW_SESSION_SECRET": secrets.token_hex(24),
+}
+force = {"REVIEW_COOKIE_SECURE": "false"}  # local demo is plain http
+out: list[str] = []
+seen: set[str] = set()
+for line in path.read_text(encoding="utf-8").splitlines():
+    if "=" in line and not line.lstrip().startswith("#"):
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key in force:
+            seen.add(key)
+            out.append(f"{key}={force[key]}")
+            continue
+        if key in fill_if_blank:
+            seen.add(key)
+            if value.strip() == "":
+                out.append(f"{key}={fill_if_blank[key]}")
+                continue
+    out.append(line)
+for key, value in {**fill_if_blank, **force}.items():
+    if key not in seen:
+        out.append(f"{key}={value}")
+path.write_text("\n".join(out) + "\n", encoding="utf-8")
+PY
 
 cat <<'EOF'
 
-Setup complete.
+Setup complete. .env is ready for an OFFLINE demo (LLM_PROVIDER=stub — no API key).
+For real extraction: set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in .env.
 
-Offline demo (no API key): set LLM_PROVIDER=stub in .env
-Real extraction:            set ANTHROPIC_API_KEY=sk-ant-... in .env
-Review UI login:            set REVIEW_AUTH_SECRET and REVIEW_SESSION_SECRET in .env
-
-Then, in four terminals:
-  1. uv run python scripts/dev_db.py serve                 # keep this open
+Run it — four terminals:
+  1. uv run python scripts/dev_db.py serve            # keep this one open
   2. uv run uvicorn stub_backend.app:app --port 9000
   3. uv run uvicorn ar_pipeline.main:app --port 8000
   4. uv run ar-pipeline ingest-eml tests/fixtures/emails/*.eml
      uv run ar-pipeline tick --repeat 3
-     open http://localhost:8000/review
+     open http://localhost:8000/review   (log in: any name + password "demo")
 EOF

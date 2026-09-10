@@ -2,14 +2,17 @@
 
 ## Setup
 
-    ./scripts/setup      # uv sync, .env, embedded Postgres, migrations
+    ./scripts/setup      # uv sync, .env, embedded Postgres, migrations, demo defaults
 
 Or by hand:
 
     uv sync
     cp .env.example .env
-    uv run python scripts/dev_db.py --write-env   # puts the DB URLs in .env
-    uv run alembic upgrade head
+    uv run python scripts/dev_db.py migrate   # writes the DB URLs to .env + runs alembic
+
+`pgserver` only keeps Postgres alive while a Python process holds it, so
+`dev_db.py migrate` starts it, runs the migration, and stops — don't split
+that into a separate `alembic` call.
 
 No Docker or system Postgres — `pgserver` bundles its own PostgreSQL
 binaries (Linux and macOS; a **Windows** machine needs WSL2 first, then
@@ -61,27 +64,18 @@ protocol with Entra ID OIDC — no route changes.
 
 ## Local demo (no Microsoft 365, no deployment)
 
-`./scripts/setup` does dependencies + `.env` + DB + migrations. Then edit
-`.env`:
-
-```
-BLOB_DIR=data/blob
-BACKEND_URL=http://localhost:9000
-REVIEW_AUTH_SECRET=demo-pass
-REVIEW_SESSION_SECRET=<any long random string>
-REVIEW_COOKIE_SECURE=false
-
-# pick ONE:
-LLM_PROVIDER=stub          # offline — no key, deterministic best-effort parse
-# LLM_PROVIDER=anthropic ; ANTHROPIC_API_KEY=sk-ant-...   # real extraction
-```
+`./scripts/setup` leaves `.env` ready for an **offline** demo — no API key:
+`LLM_PROVIDER=stub`, a generated `REVIEW_SESSION_SECRET`, `REVIEW_AUTH_SECRET=demo`,
+`REVIEW_COOKIE_SECURE=false`, `BACKEND_URL=http://localhost:9000`. Nothing to
+edit for a first run.
 
 **`LLM_PROVIDER=stub`** runs the whole pipeline with no API key and no
 network: it regex-parses the raw text for amounts / a bank reference /
 an invoice token and emits one payment at `confidence=0.15`. Every field
 is a guess — the reviewer corrects it in the UI, which is the Phase-1
 story. Image / scanned-PDF attachments get a "not transcribed — enter by
-hand" placeholder. Switch to `anthropic` + a key for real extraction.
+hand" placeholder. For real extraction, set `LLM_PROVIDER=anthropic` and
+`ANTHROPIC_API_KEY=sk-ant-...` in `.env`.
 
 ```bash
 # terminal 1 — keep the embedded Postgres up for the whole demo
@@ -107,7 +101,7 @@ uv run ar-pipeline tick --repeat 3
 uv run ar-pipeline status
 ```
 
-Open <http://localhost:8000/review>, log in with any name + `demo-pass`.
+Open <http://localhost:8000/review>, log in with any name + password `demo`.
 The extraction is in the queue — open it, correct anything in the form,
 **Save & Approve**. Back in terminal 4:
 

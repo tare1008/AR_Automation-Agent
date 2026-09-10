@@ -1,14 +1,16 @@
-"""Start a local embedded PostgreSQL (pgserver) for development.
+"""Local embedded PostgreSQL (pgserver) for development and demos.
 
     uv run python scripts/dev_db.py              # print DATABASE_URL / TEST_DATABASE_URL
     uv run python scripts/dev_db.py --write-env  # ... and upsert them into ./.env
+    uv run python scripts/dev_db.py migrate      # ... hold the server up and run alembic
     uv run python scripts/dev_db.py serve        # ... and stay running until Ctrl-C
 
-The bare form prints the URLs and exits — but pgserver stops the postmaster
-once no process holds it, so for a demo (app + CLI in other terminals) run
-``serve`` in its own terminal and leave it open. The data lives under
-.pgdata/ and the socket URL is stable between runs; delete that directory
-to reset.
+pgserver only keeps the postmaster alive while a Python process holds its
+handle, so anything that needs the database (migrations, the app, the CLI)
+needs ``serve`` running in another terminal — or, for one-shot work like
+migrations, use ``migrate`` which holds the server for exactly that call.
+The data lives under .pgdata/ and the socket URL is stable between runs;
+delete that directory to reset.
 
 pgserver bundles its own PostgreSQL binaries — no system Postgres or Docker
 needed. It supports Linux and macOS (a Windows machine needs WSL2).
@@ -43,11 +45,12 @@ def uri_for(server: pgserver.PostgresServer, database: str) -> str:
 def write_env(updates: dict[str, str]) -> pathlib.Path:
     """Upsert ``KEY=value`` lines into ./.env, preserving everything else."""
     env_path = ROOT / ".env"
-    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
     seen: set[str] = set()
     out: list[str] = []
     for line in lines:
-        key = line.split("=", 1)[0] if "=" in line else None
+        is_kv = "=" in line and not line.lstrip().startswith("#")
+        key = line.split("=", 1)[0].strip() if is_kv else None
         if key in updates:
             out.append(f"{key}={updates[key]}")
             seen.add(key)
@@ -56,12 +59,21 @@ def write_env(updates: dict[str, str]) -> pathlib.Path:
     for key, value in updates.items():
         if key not in seen:
             out.append(f"{key}={value}")
-    env_path.write_text("\n".join(out) + "\n")
+    env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
     return env_path
 
 
+def _run_alembic_upgrade() -> int:
+    from alembic import command
+    from alembic.config import Config
+
+    command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
+    return 0
+
+
 if __name__ == "__main__":
-    srv = ensure_server()
+    args = sys.argv[1:]
+    srv = ensure_server()  # held for the life of this process
     urls = {
         "DATABASE_URL": uri_for(srv, "ar_pipeline"),
         "TEST_DATABASE_URL": uri_for(srv, "ar_pipeline_test"),
@@ -69,11 +81,18 @@ if __name__ == "__main__":
     for key, value in urls.items():
         print(f"{key}={value}", flush=True)
 
-    if "--write-env" in sys.argv:
+    if "--write-env" in args:
         path = write_env(urls)
         print(f"# wrote DATABASE_URL / TEST_DATABASE_URL to {path}", file=sys.stderr, flush=True)
 
-    if "serve" in sys.argv[1:]:
+    if "migrate" in args:
+        # alembic env.py reads DATABASE_URL (via Settings / .env); the server
+        # stays up because `srv` is still referenced here.
+        write_env(urls)
+        print("# alembic upgrade head", file=sys.stderr, flush=True)
+        raise SystemExit(_run_alembic_upgrade())
+
+    if "serve" in args:
         print("# pgserver up — leave this open (Ctrl-C to stop)", file=sys.stderr, flush=True)
         try:
             signal.pause()
