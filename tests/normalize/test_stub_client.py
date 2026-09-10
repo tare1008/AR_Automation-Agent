@@ -17,8 +17,15 @@ def test_returns_one_low_confidence_remittance():
     assert "stub" in out.notes.lower()
     assert len(out.payments) == 1
     p = out.payments[0]
-    assert p.confidence == 0.15
+    assert 0.0 < p.confidence <= 0.95
     assert len(p.line_items) == 1  # always >=1 so RemittancePayload construction succeeds
+
+
+def test_confidence_reflects_how_much_was_found():
+    bare = _parse("Subject: hi\n\nplease see attached")
+    rich = _parse("NEFT ref SBIN225551234567 — INV-2026-9 — total 1,23,456.78")
+    assert bare.payments[0].confidence < 0.5
+    assert rich.payments[0].confidence >= 0.9
 
 
 def test_pulls_the_largest_amount_as_total():

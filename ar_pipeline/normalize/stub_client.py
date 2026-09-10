@@ -80,6 +80,15 @@ def _draft(text: str) -> dict[str, object]:
     amounts = _amounts(text)
     top = amounts[0] if amounts else Decimal("0")
     reference, reference_type = _reference(text)
+    invoice_number = _invoice_number(text)
+    confidence = 0.2
+    if top > 0:
+        confidence += 0.35
+    if reference:
+        confidence += 0.2
+    if invoice_number:
+        confidence += 0.2
+    confidence = min(confidence, 0.95)
     return {
         "payer_name": _PLACEHOLDER_PAYER,
         "payment_reference": reference,
@@ -88,12 +97,12 @@ def _draft(text: str) -> dict[str, object]:
         "total_paid_amount": top,
         "line_items": [
             {
-                "invoice_number": _invoice_number(text),
+                "invoice_number": invoice_number,
                 "invoice_amount": top,
                 "amount_paid": top,
             }
         ],
-        "confidence": 0.15,
+        "confidence": round(confidence, 2),
     }
 
 
