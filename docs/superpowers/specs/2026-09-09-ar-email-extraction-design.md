@@ -261,6 +261,55 @@ tests/
 >   test, a queue-ordering test, a reprocess-supersedes-and-reextracts test,
 >   an approve-inserts-delivery test, and an nh3-strips-`<script>` test.
 
+> Amendments during implementation (Deliver plan, 2026-09-10):
+> - **`backend_client.py`** — `BackendClient` with an injectable
+>   `http: httpx.Client | None` (same pattern as `ingest/client.py`), so
+>   tests drive it with `httpx.MockTransport`. `send(payload: dict,
+>   idempotency_key: str) -> DeliveryResult` POSTs the canonical JSON to
+>   `Settings.backend_url` + `/remittances` with header
+>   **`Idempotency-Key: <extraction_id>`** and, when `Settings.
+>   backend_auth_header` is non-empty, `Authorization: <that value>` (the
+>   setting holds the complete header value, e.g. `"Bearer …"`). Classifies
+>   the outcome: `2xx` → `ok`; `4xx` except `429` → `permanent_fail` (body
+>   captured); `429` / `5xx` / `httpx.TimeoutException` /
+>   `httpx.TransportError` → `transient_fail`.
+> - **`deliverer.py`** — `run_deliveries(session, backend_client, *, batch,
+>   now)` selects `delivery` rows `status=="pending"` AND
+>   (`next_attempt_at IS NULL` OR `<= now`), oldest first, and processes
+>   each in its own `begin_nested()` savepoint with a commit per row (same
+>   discipline as `advance_once`). Per row: `attempts += 1`,
+>   `last_attempt_at = now`. `ok` → `status="delivered"`, `delivered_at =
+>   now`. `permanent_fail` → `status="failed"`, `last_error` = status +
+>   body. `transient_fail` → if `attempts > len(_BACKOFF)` →
+>   `status="failed"`; else `next_attempt_at = now + _BACKOFF[attempts-1]`,
+>   `last_error` recorded, stays `pending`. `_BACKOFF = [1m, 5m, 30m, 2h,
+>   6h]` (so 6 attempts total, then `failed`). An `extraction` that is not
+>   `status=="approved"` is skipped (defensive — `reprocess` could have
+>   superseded it after the `delivery` row was made) with `last_error =
+>   "extraction no longer approved"` and `status="failed"`.
+> - **`worker.run_deliveries()`** — lazy imports, `with get_session()`,
+>   builds the real `BackendClient`, calls `deliverer.run_deliveries`; logs
+>   `%d delivered, %d failed, %d retrying`. If `Settings.backend_url` is
+>   empty it logs `"run_deliveries: backend_url not set"` and returns
+>   (no-op, same as today).
+> - **Review UI** gains a failed-deliveries section on the Errors page
+>   (`GET /review/errors` also passes `failed_deliveries` — a join of
+>   `delivery` `status=="failed"` to its `extraction`/`email`, showing
+>   `last_error`, `attempts`, `last_attempt_at`) and **`POST
+>   /review/deliveries/{delivery_id}/resend`** → `resend_delivery(session,
+>   delivery_id)` in `review/service.py`: `ReviewError` if the row is not
+>   `failed`; else `status="pending"`, `attempts=0`, `next_attempt_at=now`,
+>   `last_error=None`. Route declared with the other `/review/...` routes,
+>   before `/{extraction_id}`.
+> - **stub_backend** is unchanged — `backend_client` unit tests use
+>   `httpx.MockTransport` for the failure paths; ONE integration test runs
+>   the whole pipeline → review approve → `run_deliveries` with the
+>   `BackendClient` pointed at the stub app via `httpx.ASGITransport` and
+>   asserts a `delivered` row + the stub's `RECEIVED` holds the payload.
+> - No new columns — the `delivery` table already has `attempts`,
+>   `next_attempt_at`, `last_error`, `last_attempt_at`, `delivered_at`. No
+>   migration.
+
 ## Modules
 
 ### ingest/
