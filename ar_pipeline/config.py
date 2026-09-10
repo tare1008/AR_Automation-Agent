@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     backend_url: str = ""
     backend_auth_header: SecretStr = SecretStr("")
 
+    review_auth_secret: SecretStr = SecretStr("")
+    review_session_secret: SecretStr = SecretStr("dev-insecure-session-key")
+    review_cookie_secure: bool = True
+
     llm_provider: str = "anthropic"
     llm_model: str = "claude-opus-5"
 

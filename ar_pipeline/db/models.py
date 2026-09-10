@@ -32,7 +32,7 @@ EMAIL_STATUSES = (
     "done",
     "error",
 )
-EXTRACTION_STATUSES = ("pending_review", "approved", "rejected")
+EXTRACTION_STATUSES = ("pending_review", "approved", "rejected", "superseded")
 DELIVERY_STATUSES = ("pending", "delivered", "failed")
 
 
@@ -137,6 +137,7 @@ class Extraction(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending_review")
     reviewed_by: Mapped[str | None] = mapped_column(String(320))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reject_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AR Review{% endblock %}</title>
+  <link rel="stylesheet" href="/review/static/review.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="/review" class="brand">AR Review</a>
+    <nav>
+      <a href="/review">Queue</a>
+      <a href="/review/errors">Errors</a>
+      {% if user %}
+        <span class="who">{{ user.name }}</span>
+        <form method="post" action="/review/logout" class="inline">
+          <button type="submit" class="linkbtn">Log out</button>
+        </form>
+      {% endif %}
+    </nav>
+  </header>
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  <main>{% block content %}{% endblock %}</main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

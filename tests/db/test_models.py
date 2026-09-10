@@ -7,6 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from ar_pipeline.db.models import Attachment, Email, Extraction
 
 
+def _now() -> datetime:
+    return datetime.now(tz=UTC)
+
+
 def _make_email(db_session, mid: str) -> Email:
     email = Email(
         internet_message_id=mid,
@@ -142,3 +146,51 @@ def test_confidence_out_of_range_rejected(db_session):
     )
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+def test_extraction_accepts_superseded_status(db_session):
+    email = Email(
+        internet_message_id="m-superseded",
+        sender_address="a@b.com",
+        sender_domain="b.com",
+        subject="s",
+        received_at=_now(),
+    )
+    db_session.add(email)
+    db_session.flush()
+    ext = Extraction(email_id=email.id, status="superseded", reject_reason=None)
+    db_session.add(ext)
+    db_session.flush()
+    assert ext.status == "superseded"
+
+
+def test_extraction_rejects_unknown_status(db_session):
+    email = Email(
+        internet_message_id="m-badstatus",
+        sender_address="a@b.com",
+        sender_domain="b.com",
+        subject="s",
+        received_at=_now(),
+    )
+    db_session.add(email)
+    db_session.flush()
+    db_session.add(Extraction(email_id=email.id, status="bogus"))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_extraction_reject_reason_persists(db_session):
+    email = Email(
+        internet_message_id="m-reason",
+        sender_address="a@b.com",
+        sender_domain="b.com",
+        subject="s",
+        received_at=_now(),
+    )
+    db_session.add(email)
+    db_session.flush()
+    ext = Extraction(email_id=email.id, status="rejected", reject_reason="not a remittance")
+    db_session.add(ext)
+    db_session.flush()
+    db_session.expire(ext)
+    assert ext.reject_reason == "not a remittance"

@@ -26,6 +26,9 @@ def _embedded_pg():
 
     os.environ["DATABASE_URL"] = uri("ar_pipeline")
     os.environ["TEST_DATABASE_URL"] = uri("ar_pipeline_test")
+    os.environ["REVIEW_AUTH_SECRET"] = "test-shared-secret"
+    os.environ["REVIEW_SESSION_SECRET"] = "test-session-signing-key"
+    os.environ["REVIEW_COOKIE_SECURE"] = "false"
 
     from ar_pipeline.config import get_settings
     from ar_pipeline.db.base import reset_engine

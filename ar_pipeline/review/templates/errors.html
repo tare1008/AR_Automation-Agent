@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Errors — AR Review{% endblock %}
+{% block content %}
+<h1>Errored emails <small>({{ emails|length }})</small></h1>
+{% if not emails %}<p>No errors.</p>{% endif %}
+{% if emails %}
+<table>
+  <thead><tr><th>Received</th><th>From</th><th>Subject</th><th>Detail</th><th></th></tr></thead>
+  <tbody>
+  {% for e in emails %}
+  <tr>
+    <td>{{ e.received_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td>{{ e.sender_address }}</td>
+    <td>{{ e.subject }}</td>
+    <td><pre class="raw">{{ e.error_detail }}</pre></td>
+    <td>
+      <form method="post" action="/review/errors/{{ e.id }}/retry">
+        <button type="submit">Retry</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

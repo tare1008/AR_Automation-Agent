@@ -200,11 +200,14 @@ tests/
 > - **The review router mounts under `/review`** on the main app (a new
 >   `create_app()` wiring in `ar_pipeline/review/app.py`, included by the
 >   existing app factory). Routes: `GET /review` (queue), `GET /review/{id}`
->   (detail: original ‖ editable form), `POST /review/{id}/approve`,
+>   (detail: original ‖ editable form),
 >   `POST /review/{id}/edit`, `POST /review/{id}/reject`,
 >   `POST /review/{id}/reprocess`, `GET /review/errors`,
 >   `POST /review/errors/{email_id}/retry`, `GET/POST /review/login`,
->   `POST /review/logout`. Delivery **Resend** is deferred to the Deliver plan.
+>   `POST /review/logout`. Approval goes through `POST /review/{id}/edit`
+>   with `approve=1` (the `AuthProvider` protocol is `check_password` /
+>   `issue_session` / `load_session`). Delivery **Resend** is deferred to
+>   the Deliver plan.
 > - **Structural editing.** The form maps to the canonical structure and a
 >   reviewer may edit any field, add/remove line items, add/remove deductions
 >   (header and line), and drop a payment. On submit, `service.py` recursively
@@ -248,7 +251,10 @@ tests/
 > - **Settings** gains `review_auth_secret: SecretStr` (default empty —
 >   `get_auth_provider()` raises at runtime if it is blank, so a real
 >   deployment must set it; tests set it via a fixture) and
->   `review_session_secret: SecretStr` (default a non-secret dev string).
+>   `review_session_secret: SecretStr` (default a dev sentinel —
+>   `get_auth_provider()` raises if it is left unchanged, so a real deploy
+>   must set `REVIEW_SESSION_SECRET`; a new `review_cookie_secure: bool = True`
+>   gates the cookie `Secure` flag).
 >   `jinja2`, `itsdangerous`, `nh3`, `python-multipart` are new deps.
 > - **Tests:** FastAPI `TestClient` route tests for every action, the
 >   per-leaf `extraction_edit` audit assertions, an "unauthenticated → 303"
