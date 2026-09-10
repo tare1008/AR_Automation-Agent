@@ -134,7 +134,9 @@ def approve_extraction(session: Session, extraction_id: uuid.UUID, user: User) -
     if isinstance(ext.canonical, dict):
         env = ext.canonical.get("envelope")
         if isinstance(env, dict):
-            env["reviewed_by"] = user.name
+            # reassign the top-level key so MutableDict tracks the change
+            # (a nested in-place mutation would not be flushed)
+            ext.canonical["envelope"] = {**env, "reviewed_by": user.name}
     session.add(Delivery(extraction_id=ext.id, status="pending", next_attempt_at=func.now()))
     email = session.get(Email, ext.email_id)
     assert email is not None
