@@ -34,6 +34,8 @@ anything downstream of the POST.
   it is sent.
 - **Phase 2 (later):** confidence-based auto-send; high-confidence,
   flag-free extractions skip review. Designed for but not built now.
+  *(Update 2026-09-11: a threshold-gated version of this is now built —
+  see the "Journey / auto-send plan" amendment below.)*
 
 ## Decisions (from brainstorming)
 
@@ -309,6 +311,46 @@ tests/
 > - No new columns — the `delivery` table already has `attempts`,
 >   `next_attempt_at`, `last_error`, `last_attempt_at`, `delivered_at`. No
 >   migration.
+
+> Amendments during implementation (Journey / auto-send plan, 2026-09-11):
+> - **Phase 2 auto-send is now built (behind a threshold).**
+>   `Settings.auto_approve_min_confidence: float = 0.0` — `0.0` keeps the
+>   Phase-1 "review everything" behavior; a value in `(0, 1]` turns on
+>   auto-send. `ar_pipeline/pipeline/routing.py` holds the shared
+>   `approve_and_queue(session, extraction, *, reviewed_by)` (set
+>   `status="approved"`, stamp `envelope.reviewed_by`, insert a `pending`
+>   `delivery`) and `settle_email(session, email)` (→ `done` when no
+>   extraction for it is still `pending_review`). Both the human path
+>   (`review/service.approve_extraction`) and the auto path call these.
+> - **`normalize_one`** (after it writes the `extraction` rows and flushes)
+>   auto-approves every row where `is_remittance` AND `canonical` is
+>   non-empty AND `validation_flags == []` AND
+>   `confidence >= auto_approve_min_confidence` — `reviewed_by="auto"`. The
+>   rest stay `pending_review`. Email → `done` if all rows auto-approved,
+>   else `review`.
+> - **The stub LLM** now sets `confidence` from how complete its parse was
+>   (base 0.2, + for an amount / a bank reference / an invoice-number
+>   token / a reconciling total), so with `auto_approve_min_confidence≈0.75`
+>   the sample set splits into an auto-sent group and a review group. The
+>   real `anthropic` provider is unchanged — its own confidence drives the
+>   same gate.
+> - **Review UI restructured for the demo.** `GET /review` is now the
+>   **Journey** dashboard: every `email` as a row — received (subject,
+>   sender, time, attachment count) → pipeline stage → per-email extraction
+>   outcome (auto-approved & delivered / awaiting review / rejected / not a
+>   remittance / error) → delivery status. The pending-review list moves to
+>   **`GET /review/queue`**. Nav: Journey · Queue · Errors. Login still
+>   redirects to `/review`.
+> - **`GET /review/extraction/{extraction_id}`** — a read-only page for ANY
+>   extraction (not just pending): the canonical payload pretty-printed,
+>   the path it took, confidence, flags, delivery status.
+>   `?format=json` on the same route returns the raw canonical as
+>   `application/json`.
+> - **stub_backend** gains `GET /` (an HTML index of everything received)
+>   and `GET /remittances` (the same as a JSON list) so a client can see
+>   what actually landed at the backend.
+> - No migration — `extraction.status` already has `approved`; `reviewed_by`
+>   just carries the sentinel `"auto"`.
 
 ## Modules
 
