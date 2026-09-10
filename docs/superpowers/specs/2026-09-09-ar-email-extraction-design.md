@@ -181,6 +181,75 @@ tests/
 >   staff**, so the envelope sender is usually internal — `vendor_guess`
 >   must come from message content, not the `From` address.
 
+> Amendments during implementation (Review UI plan, 2026-09-10):
+> - **App auth for the demo is a single shared secret.** `auth.py` defines
+>   an `AuthProvider` protocol (`login`, `current_user(request) -> User |
+>   None`, `logout`); `SharedSecretAuth` is the only implementation: the
+>   login form takes a shared password (`Settings.review_auth_secret`,
+>   `SecretStr`) plus a free-text **"Your name"** field. On success it sets
+>   a signed session cookie (`itsdangerous`, `Settings.review_session_secret`)
+>   holding the typed name; that name is what lands in `reviewed_by` /
+>   `edited_by`. No user table, no per-user passwords, no OIDC. An Entra ID
+>   OIDC provider implements the same protocol later without touching routes.
+>   Every route except the login pages depends on `current_user` and returns
+>   `303 → /review/login` when it is `None`.
+> - **UI is server-rendered Jinja2 + plain HTML forms, full-page reloads.**
+>   No HTMX, no React, no build step. Templates + one static CSS file served
+>   by the same FastAPI app. A small vanilla-JS snippet is allowed for the
+>   add/remove-row affordance in the structural editor and nothing else.
+> - **The review router mounts under `/review`** on the main app (a new
+>   `create_app()` wiring in `ar_pipeline/review/app.py`, included by the
+>   existing app factory). Routes: `GET /review` (queue), `GET /review/{id}`
+>   (detail: original ‖ editable form), `POST /review/{id}/approve`,
+>   `POST /review/{id}/edit`, `POST /review/{id}/reject`,
+>   `POST /review/{id}/reprocess`, `GET /review/errors`,
+>   `POST /review/errors/{email_id}/retry`, `GET/POST /review/login`,
+>   `POST /review/logout`. Delivery **Resend** is deferred to the Deliver plan.
+> - **Structural editing.** The form maps to the canonical structure and a
+>   reviewer may edit any field, add/remove line items, add/remove deductions
+>   (header and line), and drop a payment. On submit, `service.py` recursively
+>   diffs the stored `canonical` against the submitted one and writes **one
+>   `extraction_edit` row per changed leaf `field_path`** (dotted path with
+>   `[i]` indices, e.g. `line_items[2].deductions[0].amount`). The edited
+>   canonical is re-validated (`validate_payload`); the row keeps
+>   `status = pending_review` and stores refreshed `validation_flags`.
+>   "Edit" and "Edit + Approve" are the same POST with an `approve=1` flag.
+> - **Approve** → `extraction.status = approved`, `reviewed_by` / `reviewed_at`
+>   set from the session, and one `delivery` row inserted `status = pending`
+>   (consumed by the Deliver plan). Blocked with a flash message if
+>   `is_remittance` is false or `canonical` is empty — those must be Rejected.
+> - **Reject** → `extraction.status = rejected`, `reviewed_by/at` set, and a
+>   **required** reason stored in a new `extraction.reject_reason` text column.
+>   Email → `done` when no sibling extraction for it is still `pending_review`.
+> - **Reprocess** (supersede, keep history) → every `pending_review`
+>   extraction for the email → new status **`superseded`**; the email →
+>   `classified`; the next `advance_once` re-runs extract + normalize and
+>   writes fresh rows. Old `extraction` + `extraction_edit` rows are retained
+>   for audit. Migration `0003_review_columns`: `EXTRACTION_STATUSES` gains
+>   `superseded`, and the `extraction.reject_reason` column is added. The
+>   queue and Approve/Deliver only ever consider `pending_review` /
+>   `approved` rows, so superseded rows are inert.
+> - **Errors tab** lists `email.status = "error"` with `error_detail`; **Retry**
+>   sets the email back to the status before the failing stage (`new` if it
+>   never classified, else `classified`) and clears `error_detail` — the loop
+>   picks it up. No delivery-failure list yet (Deliver plan).
+> - **Original-email pane.** Attachments are streamed from the blob store via
+>   `GET /review/{id}/attachment/{attachment_id}` (auth-gated). The email
+>   `body_html` is sanitised with **nh3** (Rust `ammonia` binding) and shown
+>   in a `sandbox` iframe; `body_text` is shown as `<pre>` when there is no
+>   HTML. Raw extractions (`raw_extraction.payload`) are shown in a collapsed
+>   panel so the reviewer can see what the LLM actually got.
+> - **Queue ordering:** `pending_review` extractions, emails oldest
+>   `received_at` first, with `is_remittance = false` / non-empty
+>   `validation_flags` / low `confidence` surfaced as badges (not a re-sort).
+> - **Settings** gains `review_auth_secret: SecretStr`,
+>   `review_session_secret: SecretStr`, both required; `jinja2`,
+>   `itsdangerous`, `nh3`, `python-multipart` are new deps.
+> - **Tests:** FastAPI `TestClient` route tests for every action, the
+>   per-leaf `extraction_edit` audit assertions, an "unauthenticated → 303"
+>   test, a queue-ordering test, a reprocess-supersedes-and-reextracts test,
+>   an approve-inserts-delivery test, and an nh3-strips-`<script>` test.
+
 ## Modules
 
 ### ingest/
@@ -333,7 +402,8 @@ extraction    id, email_id, canonical jsonb, confidence numeric,
               is_remittance bool, validation_flags jsonb, llm_model,
               prompt_version, status, reviewed_by, reviewed_at,
               raw_llm_response jsonb, created_at
-              status: pending_review → approved | rejected
+              status: pending_review → approved | rejected | superseded
+                      (superseded = replaced by a Reprocess; kept for audit)
 
 extraction_edit  (audit)
               id, extraction_id, field_path, old_value, new_value,
@@ -472,7 +542,9 @@ and `normalize/` modules.**
 
 - Finalize canonical field names against real samples.
 - Confirm cloud provider (leaning Azure) and blob store choice.
-- Confirm the app auth provider for Phase 1 (simple vs Entra ID now).
+- ~~Confirm the app auth provider for Phase 1~~ — **resolved 2026-09-10:**
+  shared-secret + typed reviewer name for the demo, behind an `AuthProvider`
+  protocol; Entra ID OIDC is a later provider (see Review UI amendment).
 - Backend URL, auth scheme, and idempotency-key header name (stub
   first; real values later).
 - LLM model selection and the normalization prompt (tuned against the
