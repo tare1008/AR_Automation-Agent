@@ -110,13 +110,14 @@ def errors_page(
     user: User = Depends(require_user),
     session: Session = Depends(get_db),
 ) -> Response:
-    from ar_pipeline.review.service import list_errored
+    from ar_pipeline.review.service import list_errored, list_failed_deliveries
 
     return _render(
         request,
         "errors.html",
         user=user,
         emails=list_errored(session),
+        failed_deliveries=list_failed_deliveries(session),
         flash=request.query_params.get("flash"),
     )
 
@@ -134,6 +135,21 @@ def retry_action(
     except ReviewError as exc:
         return RedirectResponse(f"/review/errors?flash={quote(str(exc))}", status_code=303)
     return RedirectResponse("/review/errors?flash=Retry+queued", status_code=303)
+
+
+@router.post("/deliveries/{delivery_id}/resend")
+def resend_delivery_action(
+    delivery_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, resend_delivery
+
+    try:
+        resend_delivery(session, delivery_id)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/errors?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse("/review/errors?flash=Resend+queued", status_code=303)
 
 
 @router.post("/{extraction_id}/edit")

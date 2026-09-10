@@ -23,4 +23,28 @@
   </tbody>
 </table>
 {% endif %}
+
+<h2>Failed deliveries <small>({{ failed_deliveries|length }})</small></h2>
+{% if not failed_deliveries %}<p>No failed deliveries.</p>{% endif %}
+{% if failed_deliveries %}
+<table>
+  <thead><tr><th>Last try</th><th>From</th><th>Subject</th><th>Attempts</th><th>Error</th><th></th></tr></thead>
+  <tbody>
+  {% for f in failed_deliveries %}
+  <tr>
+    <td>{{ f.last_attempt_at.strftime("%Y-%m-%d %H:%M") if f.last_attempt_at else "—" }}</td>
+    <td>{{ f.sender_address }}</td>
+    <td>{{ f.email_subject }}</td>
+    <td>{{ f.attempts }}</td>
+    <td><pre class="raw">{{ f.last_error }}</pre></td>
+    <td>
+      <form method="post" action="/review/deliveries/{{ f.delivery_id }}/resend">
+        <button type="submit">Resend</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
 {% endblock %}

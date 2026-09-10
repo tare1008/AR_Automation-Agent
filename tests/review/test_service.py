@@ -173,3 +173,39 @@ def test_list_errored_returns_error_emails_oldest_first(db_session, seed_pending
     email.status = "error"
     db_session.flush()
     assert [e.id for e in list_errored(db_session)] == [email.id]
+
+
+def test_resend_delivery_resets_the_row(db_session, seed_pending):
+    from datetime import UTC, datetime
+
+    from ar_pipeline.db.models import Delivery
+    from ar_pipeline.review.service import resend_delivery
+
+    email, ext = seed_pending()
+    ext.status = "approved"
+    d = Delivery(
+        extraction_id=ext.id,
+        status="failed",
+        attempts=6,
+        last_error="boom",
+        last_attempt_at=datetime(2026, 9, 10, tzinfo=UTC),
+    )
+    db_session.add(d)
+    db_session.flush()
+    resend_delivery(db_session, d.id)
+    db_session.refresh(d)
+    assert d.status == "pending" and d.attempts == 0 and d.last_error is None
+
+
+def test_resend_delivery_rejects_non_failed(db_session, seed_pending):
+    import pytest
+
+    from ar_pipeline.db.models import Delivery
+    from ar_pipeline.review.service import ReviewError, resend_delivery
+
+    email, ext = seed_pending()
+    d = Delivery(extraction_id=ext.id, status="pending", attempts=0)
+    db_session.add(d)
+    db_session.flush()
+    with pytest.raises(ReviewError):
+        resend_delivery(db_session, d.id)

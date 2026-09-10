@@ -239,6 +239,53 @@ def list_errored(session: Session) -> list[Email]:
     )
 
 
+@dataclass(frozen=True)
+class FailedDeliveryRow:
+    delivery_id: uuid.UUID
+    extraction_id: uuid.UUID
+    email_subject: str
+    sender_address: str
+    attempts: int
+    last_attempt_at: datetime | None
+    last_error: str | None
+
+
+def list_failed_deliveries(session: Session) -> list[FailedDeliveryRow]:
+    rows = session.execute(
+        select(Delivery, Email)
+        .join(Extraction, Delivery.extraction_id == Extraction.id)
+        .join(Email, Extraction.email_id == Email.id)
+        .where(Delivery.status == "failed")
+        .order_by(Delivery.last_attempt_at.desc().nulls_last())
+    ).all()
+    return [
+        FailedDeliveryRow(
+            delivery_id=d.id,
+            extraction_id=d.extraction_id,
+            email_subject=e.subject,
+            sender_address=e.sender_address,
+            attempts=d.attempts,
+            last_attempt_at=d.last_attempt_at,
+            last_error=d.last_error,
+        )
+        for d, e in rows
+    ]
+
+
+def resend_delivery(session: Session, delivery_id: uuid.UUID) -> None:
+    d = session.get(Delivery, delivery_id)
+    if d is None:
+        raise ReviewError("delivery not found")
+    if d.status != "failed":
+        raise ReviewError(f"delivery is {d.status}, not failed")
+    d.status = "pending"
+    d.attempts = 0
+    d.next_attempt_at = func.now()
+    d.last_error = None
+    d.delivered_at = None
+    session.flush()
+
+
 def retry_email(session: Session, email_id: uuid.UUID) -> None:
     email = session.get(Email, email_id)
     if email is None:

@@ -102,6 +102,8 @@ def test_normalize_one_two_payments(db_session, store):
     rows = db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)).all()
     assert len(rows) == 2
     assert {r.canonical["envelope"]["payment_index"] for r in rows} == {0, 1}
+    # every row's envelope carries its own authoritative PK, not a placeholder uuid
+    assert all(r.canonical["envelope"]["extraction_id"] == str(r.id) for r in rows)
 
 
 def test_poison_llm_refusal_isolated_from_healthy_sibling(db_session, store):
