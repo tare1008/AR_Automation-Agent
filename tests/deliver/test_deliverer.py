@@ -106,3 +106,19 @@ def test_one_bad_row_does_not_block_the_batch(db_session):
     run_deliveries(db_session, Boom(), now=_NOW)
     statuses = {r.status for r in db_session.scalars(select(Delivery)).all()}
     assert statuses == {"failed", "delivered"}
+
+
+def test_raised_exception_still_records_attempt(db_session):
+    d = _approved_delivery(db_session)
+
+    class Raiser:
+        def send(self, payload, idempotency_key):
+            raise RuntimeError("boom")
+
+    stats = run_deliveries(db_session, Raiser(), now=_NOW)
+    db_session.refresh(d)
+    assert stats.failed == 1
+    assert d.status == "failed"
+    assert d.attempts == 1
+    assert d.last_attempt_at == _NOW
+    assert d.last_error is not None and "boom" in d.last_error

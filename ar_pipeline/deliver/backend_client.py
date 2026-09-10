@@ -49,7 +49,7 @@ class BackendClient:
         if self._auth_header:
             headers["Authorization"] = self._auth_header
         try:
-            resp = self._http.post("/remittances", json=payload, headers=headers)
+            resp = self._http.post(f"{self._base}/remittances", json=payload, headers=headers)
         except (httpx.TimeoutException, httpx.TransportError) as exc:
             return DeliveryResult("transient_fail", None, _bounded(repr(exc)))
 

@@ -51,13 +51,13 @@ def run_deliveries(
     batch: int = 20,
     now: datetime | None = None,
 ) -> DeliveryStats:
-    now = now or datetime.now(tz=UTC)
+    cutoff = now or datetime.now(tz=UTC)
     rows = list(
         session.scalars(
             select(Delivery)
             .where(
                 Delivery.status == "pending",
-                (Delivery.next_attempt_at.is_(None)) | (Delivery.next_attempt_at <= now),
+                (Delivery.next_attempt_at.is_(None)) | (Delivery.next_attempt_at <= cutoff),
             )
             .order_by(Delivery.next_attempt_at.asc().nulls_first(), Delivery.id)
             .limit(batch)
@@ -66,12 +66,15 @@ def run_deliveries(
 
     delivered = failed = retrying = 0
     for row in rows:
+        row_now = now if now is not None else datetime.now(tz=UTC)
         try:
             with session.begin_nested():
-                outcome = _deliver_one(session, row, backend_client, now)
+                outcome = _deliver_one(session, row, backend_client, row_now)
         except Exception as exc:  # savepoint rolled back
             row.status = "failed"
             row.last_error = _cap(f"{type(exc).__name__}: {exc}")
+            row.attempts += 1
+            row.last_attempt_at = row_now
             outcome = "failed"
 
         if outcome == "delivered":
