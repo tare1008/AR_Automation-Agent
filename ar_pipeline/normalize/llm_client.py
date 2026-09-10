@@ -78,4 +78,8 @@ def get_llm_client() -> LLMClient:
     s = get_settings()
     if s.llm_provider == "anthropic":
         return AnthropicLLMClient(model=s.llm_model)
+    if s.llm_provider == "stub":
+        from ar_pipeline.normalize.stub_client import StubLLMClient
+
+        return StubLLMClient()
     raise LLMError(f"unknown llm_provider {s.llm_provider!r}")

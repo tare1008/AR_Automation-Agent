@@ -1,14 +1,20 @@
 # AR Email Settlement Extraction Pipeline
 
 ## Setup
+
+    ./scripts/setup      # uv sync, .env, embedded Postgres, migrations
+
+Or by hand:
+
     uv sync
-
-This machine has no Docker; local Postgres is an embedded `pgserver`
-instance (bundled binaries, Unix socket under `.pgdata/`). The test
-suite starts its own instance automatically. For a dev DB:
-
-    eval "$(uv run python scripts/dev_db.py | sed 's/^/export /')"
+    cp .env.example .env
+    uv run python scripts/dev_db.py --write-env   # puts the DB URLs in .env
     uv run alembic upgrade head
+
+No Docker or system Postgres — `pgserver` bundles its own PostgreSQL
+binaries (Linux and macOS; a **Windows** machine needs WSL2 first, then
+the steps above run unchanged inside it). The test suite starts its own
+instance automatically.
 
 ## Test
     uv run pytest
@@ -55,32 +61,31 @@ protocol with Entra ID OIDC — no route changes.
 
 ## Local demo (no Microsoft 365, no deployment)
 
-Four terminals. Everything reads `.env`, so create it once:
+`./scripts/setup` does dependencies + `.env` + DB + migrations. Then edit
+`.env`:
 
-```bash
-uv run python scripts/dev_db.py            # prints DATABASE_URL / TEST_DATABASE_URL
-cat > .env <<'EOF'
-DATABASE_URL=<paste from above>
-TEST_DATABASE_URL=<paste from above>
+```
 BLOB_DIR=data/blob
 BACKEND_URL=http://localhost:9000
 REVIEW_AUTH_SECRET=demo-pass
 REVIEW_SESSION_SECRET=<any long random string>
 REVIEW_COOKIE_SECURE=false
-ANTHROPIC_API_KEY=sk-ant-...
-EOF
+
+# pick ONE:
+LLM_PROVIDER=stub          # offline — no key, deterministic best-effort parse
+# LLM_PROVIDER=anthropic ; ANTHROPIC_API_KEY=sk-ant-...   # real extraction
 ```
 
-`ANTHROPIC_API_KEY` is required — normalization and image/scanned-PDF
-extraction call the real API. Without it those emails land in `error`
-(visible on the review UI's Errors tab).
+**`LLM_PROVIDER=stub`** runs the whole pipeline with no API key and no
+network: it regex-parses the raw text for amounts / a bank reference /
+an invoice token and emits one payment at `confidence=0.15`. Every field
+is a guess — the reviewer corrects it in the UI, which is the Phase-1
+story. Image / scanned-PDF attachments get a "not transcribed — enter by
+hand" placeholder. Switch to `anthropic` + a key for real extraction.
 
 ```bash
 # terminal 1 — keep the embedded Postgres up for the whole demo
 uv run python scripts/dev_db.py serve
-
-# terminal 2 — one-time schema
-uv run alembic upgrade head
 
 # terminal 2 — the fake backend
 uv run uvicorn stub_backend.app:app --port 9000
@@ -114,3 +119,12 @@ curl -s localhost:9000/remittances/<extraction-id> | jq   # the payload the back
 
 If a delivery fails (e.g. stub backend down), it shows on the review UI's
 Errors tab with a **Resend** button.
+
+### Sharing with a teammate
+
+Give them the repo (it clones and runs — `pgserver` brings Postgres). Do
+**not** send `.env` or the `samples/` emails through git: `.env` is
+per-machine, and `samples/` is gitignored because it holds real client
+PII. If a teammate needs the real sample emails, send those `.eml` files
+directly (encrypted). The committed `tests/fixtures/emails/*.eml` are
+enough for a full demo.
