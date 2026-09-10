@@ -24,6 +24,9 @@ dependencies = [
     "python-multipart>=0.0.32",
 ]
 
+[project.scripts]
+ar-pipeline = "ar_pipeline.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",
