@@ -1,4 +1,4 @@
-"""Advance emails one pipeline state at a time: ``new -> classified -> extracted``.
+"""Advance emails one pipeline state at a time: ``new -> classified -> extracted -> review``.
 
 ``advance_once`` pulls a batch of pending emails and moves each forward exactly
 one state. Every email is processed inside its own ``session.begin_nested()``
@@ -28,15 +28,18 @@ from ar_pipeline.extract.excel import extract_excel
 from ar_pipeline.extract.html_table import extract_html_tables
 from ar_pipeline.extract.pdf import extract_pdf
 from ar_pipeline.extract.vision import VisionExtractor
+from ar_pipeline.normalize.llm_client import LLMClient
+from ar_pipeline.normalize.service import normalize_one
 from ar_pipeline.storage import BlobStore, attachment_blob_key
 
-_PENDING_STATUSES = ("new", "classified")
+_PENDING_STATUSES = ("new", "classified", "extracted")
 
 
 @dataclass(frozen=True)
 class AdvanceStats:
     classified: int = 0
     extracted: int = 0
+    normalized: int = 0
     errored: int = 0
 
 
@@ -44,6 +47,7 @@ def advance_once(
     session: Session,
     blob_store: BlobStore,
     vision_extractor: VisionExtractor,
+    llm_client: LLMClient,
     *,
     batch: int = 20,
 ) -> AdvanceStats:
@@ -64,11 +68,11 @@ def advance_once(
         )
     )
 
-    classified = extracted = errored = 0
+    classified = extracted = normalized = errored = 0
     for email in emails:
         try:
             with session.begin_nested():
-                result = _step(session, email, blob_store, vision_extractor)
+                result = _step(session, email, blob_store, vision_extractor, llm_client)
         except Exception as exc:  # savepoint already rolled back
             email.status = "error"
             email.error_detail = _truncate(f"{type(exc).__name__}: {exc}")
@@ -78,13 +82,17 @@ def advance_once(
             classified += 1
         elif result == "extracted":
             extracted += 1
+        elif result == "normalized":
+            normalized += 1
         elif result == "errored":
             # status / error_detail already set (here or in _extract); just count.
             errored += 1
 
         session.commit()
 
-    return AdvanceStats(classified=classified, extracted=extracted, errored=errored)
+    return AdvanceStats(
+        classified=classified, extracted=extracted, normalized=normalized, errored=errored
+    )
 
 
 def _step(
@@ -92,10 +100,18 @@ def _step(
     email: Email,
     blob_store: BlobStore,
     vision_extractor: VisionExtractor,
+    llm_client: LLMClient,
 ) -> str:
     if email.status == "new":
         return _classify(session, email, blob_store)
-    return _extract(session, email, blob_store, vision_extractor)
+    if email.status == "classified":
+        return _extract(session, email, blob_store, vision_extractor)
+    return _normalize(session, email, llm_client)
+
+
+def _normalize(session: Session, email: Email, llm_client: LLMClient) -> str:
+    normalize_one(session, email, llm_client)
+    return "normalized"
 
 
 def _classify(session: Session, email: Email, blob_store: BlobStore) -> str:

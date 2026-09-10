@@ -17,16 +17,18 @@ def poll_inbox() -> None:
 def advance_pipeline() -> None:
     from ar_pipeline.db.base import get_session
     from ar_pipeline.extract.vision import get_vision_extractor
+    from ar_pipeline.normalize.llm_client import get_llm_client
     from ar_pipeline.pipeline.advance import advance_once
     from ar_pipeline.storage import get_blob_store
 
     # advance_once commits per email; this wrapper's final commit is a no-op.
     with get_session() as session:
-        stats = advance_once(session, get_blob_store(), get_vision_extractor())
+        stats = advance_once(session, get_blob_store(), get_vision_extractor(), get_llm_client())
     log.info(
-        "advance_pipeline: %d classified, %d extracted, %d errored",
+        "advance_pipeline: %d classified, %d extracted, %d normalized, %d errored",
         stats.classified,
         stats.extracted,
+        stats.normalized,
         stats.errored,
     )
     return None
