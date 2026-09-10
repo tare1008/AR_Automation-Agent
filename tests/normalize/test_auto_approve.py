@@ -91,3 +91,19 @@ def test_threshold_zero_keeps_everything_in_review(db_session):
     db_session.refresh(email)
     ext = db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)).one()
     assert ext.status == "pending_review"
+
+
+def test_a_validation_flag_blocks_auto_approval_even_at_high_confidence(db_session, monkeypatch):
+    monkeypatch.setenv("AUTO_APPROVE_MIN_CONFIDENCE", "0.75")
+    config_module.get_settings.cache_clear()
+    try:
+        email = _extracted_email(db_session, "m-auto-flagged")
+        output = _clean_output(0.99)
+        output.payments[0].line_items[0].invoice_number = ""  # forces "empty invoice number"
+        normalize_one(db_session, email, FakeLLMClient(response=output))
+        db_session.refresh(email)
+        ext = db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)).one()
+        assert ext.status == "pending_review"
+        assert ext.validation_flags  # a real checkpoint failure, not auto-approved despite 0.99
+    finally:
+        config_module.get_settings.cache_clear()
