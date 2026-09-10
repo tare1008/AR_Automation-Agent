@@ -117,6 +117,18 @@ def test_draft_with_no_line_items_surfaced_on_first_good_payment() -> None:
     assert any("schema validation failed" in f for f in results[0].validation_flags)
 
 
+def test_invalid_header_draft_skipped_index_stays_contiguous() -> None:
+    out, results = _call(
+        NormalizerOutput(
+            is_remittance=True,
+            payments=[_draft(currency="Rupees"), _draft()],
+        )
+    )
+    assert len(results) == 1
+    assert results[0].payload.envelope.payment_index == 0
+    assert any("schema validation failed" in f for f in results[0].validation_flags)
+
+
 def test_build_user_message_contents() -> None:
     msg = build_user_message(
         "fwd@company.example",

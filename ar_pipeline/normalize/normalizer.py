@@ -91,31 +91,32 @@ def normalize_email(
 
     results: list[NormalizedPayment] = []
     skipped: list[str] = []
+    next_index = 0
 
     for i, draft in enumerate(out.payments):
-        hdr = Header(
-            payer_name=draft.payer_name,
-            payer_id=draft.payer_id,
-            payment_reference=draft.payment_reference,
-            payment_reference_type=draft.payment_reference_type,
-            payment_date=draft.payment_date,
-            payment_method=draft.payment_method,
-            currency=draft.currency or "INR",
-            total_paid_amount=draft.total_paid_amount,
-            deductions=draft.header_deductions,
-        )
-        env = Envelope(
-            extraction_id=str(uuid.uuid4()),
-            source_email_id=email_id,
-            payment_index=i,
-            vendor_guess=draft.vendor_guess,
-            extracted_at=datetime.now(UTC),
-            reviewed_by=None,
-        )
         try:
+            hdr = Header(
+                payer_name=draft.payer_name,
+                payer_id=draft.payer_id,
+                payment_reference=draft.payment_reference,
+                payment_reference_type=draft.payment_reference_type,
+                payment_date=draft.payment_date,
+                payment_method=draft.payment_method,
+                currency=draft.currency or "INR",
+                total_paid_amount=draft.total_paid_amount,
+                deductions=draft.header_deductions,
+            )
+            env = Envelope(
+                extraction_id=str(uuid.uuid4()),
+                source_email_id=email_id,
+                payment_index=next_index,
+                vendor_guess=draft.vendor_guess,
+                extracted_at=datetime.now(UTC),
+                reviewed_by=None,
+            )
             payload = RemittancePayload(envelope=env, header=hdr, line_items=list(draft.line_items))
         except ValidationError as exc:
-            skipped.append(f"payment {i}: schema validation failed: {type(exc).__name__}")
+            skipped.append(f"draft {i}: schema validation failed: {exc}")
             continue
 
         flags = validate_payload(payload)
@@ -137,6 +138,7 @@ def normalize_email(
                 raw_llm_response=raw,
             )
         )
+        next_index += 1
 
     if skipped:
         if results:
