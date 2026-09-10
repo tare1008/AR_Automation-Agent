@@ -23,6 +23,7 @@ from ar_pipeline.db.models import (
     RawExtraction,
 )
 from ar_pipeline.normalize.validators import validate_payload
+from ar_pipeline.pipeline.routing import approve_and_queue, settle_email
 from ar_pipeline.review.auth import User
 from ar_pipeline.review.forms import FieldEdit, canonical_diff
 from ar_pipeline.schema.canonical import RemittancePayload
@@ -114,16 +115,6 @@ def _require_pending(ext: Extraction | None) -> Extraction:
     return ext
 
 
-def _close_email_if_done(session: Session, email: Email) -> None:
-    still_open = session.scalar(
-        select(func.count())
-        .select_from(Extraction)
-        .where(Extraction.email_id == email.id, Extraction.status == "pending_review")
-    )
-    if not still_open:
-        email.status = "done"
-
-
 def _check_approvable(ext: Extraction) -> None:
     if not ext.is_remittance or not ext.canonical:
         raise ReviewError("cannot approve a non-remittance / empty extraction — reject it instead")
@@ -132,21 +123,10 @@ def _check_approvable(ext: Extraction) -> None:
 def approve_extraction(session: Session, extraction_id: uuid.UUID, user: User) -> None:
     ext = _require_pending(session.get(Extraction, extraction_id))
     _check_approvable(ext)
-    ext.status = "approved"
-    ext.reviewed_by = user.name
-    ext.reviewed_at = func.now()
-    if isinstance(ext.canonical, dict):
-        env = ext.canonical.get("envelope")
-        if isinstance(env, dict):
-            # reassign the top-level key so MutableDict tracks the change
-            # (a nested in-place mutation would not be flushed)
-            ext.canonical["envelope"] = {**env, "reviewed_by": user.name}
-    session.add(Delivery(extraction_id=ext.id, status="pending", next_attempt_at=func.now()))
     email = session.get(Email, ext.email_id)
     assert email is not None
-    session.flush()
-    _close_email_if_done(session, email)
-    session.flush()
+    approve_and_queue(session, ext, reviewed_by=user.name)
+    settle_email(session, email)
 
 
 def reject_extraction(session: Session, extraction_id: uuid.UUID, user: User, reason: str) -> None:
@@ -160,8 +140,7 @@ def reject_extraction(session: Session, extraction_id: uuid.UUID, user: User, re
     email = session.get(Email, ext.email_id)
     assert email is not None
     session.flush()
-    _close_email_if_done(session, email)
-    session.flush()
+    settle_email(session, email)
 
 
 def save_edits(
