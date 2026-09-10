@@ -223,12 +223,15 @@ tests/
 >   Email → `done` when no sibling extraction for it is still `pending_review`.
 > - **Reprocess** (supersede, keep history) → every `pending_review`
 >   extraction for the email → new status **`superseded`**; the email →
->   `classified`; the next `advance_once` re-runs extract + normalize and
->   writes fresh rows. Old `extraction` + `extraction_edit` rows are retained
->   for audit. Migration `0003_review_columns`: `EXTRACTION_STATUSES` gains
->   `superseded`, and the `extraction.reject_reason` column is added. The
->   queue and Approve/Deliver only ever consider `pending_review` /
->   `approved` rows, so superseded rows are inert.
+>   `classified`; `error_detail` cleared. The next `advance_once` re-runs
+>   normalization (and re-extracts any source that still has no
+>   `raw_extraction` — already-extracted sources are not re-billed) and
+>   writes fresh `extraction` rows. Old `extraction` + `extraction_edit`
+>   rows are retained for audit. Migration `0003_review_columns`:
+>   `EXTRACTION_STATUSES` gains `superseded`, and the
+>   `extraction.reject_reason` column is added. The queue and
+>   Approve/Deliver only ever consider `pending_review` / `approved` rows,
+>   so superseded rows are inert.
 > - **Errors tab** lists `email.status = "error"` with `error_detail`; **Retry**
 >   sets the email back to the status before the failing stage (`new` if it
 >   never classified, else `classified`) and clears `error_detail` — the loop
@@ -242,9 +245,11 @@ tests/
 > - **Queue ordering:** `pending_review` extractions, emails oldest
 >   `received_at` first, with `is_remittance = false` / non-empty
 >   `validation_flags` / low `confidence` surfaced as badges (not a re-sort).
-> - **Settings** gains `review_auth_secret: SecretStr`,
->   `review_session_secret: SecretStr`, both required; `jinja2`,
->   `itsdangerous`, `nh3`, `python-multipart` are new deps.
+> - **Settings** gains `review_auth_secret: SecretStr` (default empty —
+>   `get_auth_provider()` raises at runtime if it is blank, so a real
+>   deployment must set it; tests set it via a fixture) and
+>   `review_session_secret: SecretStr` (default a non-secret dev string).
+>   `jinja2`, `itsdangerous`, `nh3`, `python-multipart` are new deps.
 > - **Tests:** FastAPI `TestClient` route tests for every action, the
 >   per-leaf `extraction_edit` audit assertions, an "unauthenticated → 303"
 >   test, a queue-ordering test, a reprocess-supersedes-and-reextracts test,
