@@ -20,11 +20,10 @@ from sqlalchemy.orm import Session
 from ar_pipeline.config import get_settings
 from ar_pipeline.db.models import Email, Extraction, ExtractionSource, RawExtraction
 from ar_pipeline.normalize.llm_client import LLMClient
-from ar_pipeline.normalize.llm_client import get_llm_client as get_normalize_llm_client
 from ar_pipeline.normalize.normalizer import normalize_email
 from ar_pipeline.normalize.prompt import PROMPT_VERSION
 
-__all__ = ["get_normalize_llm_client", "normalize_one"]
+__all__ = ["normalize_one"]
 
 
 def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
@@ -38,9 +37,17 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
             select(RawExtraction.payload)
             .join(ExtractionSource, RawExtraction.extraction_source_id == ExtractionSource.id)
             .where(ExtractionSource.email_id == email.id)
-            .order_by(RawExtraction.extraction_source_id)
+            # deterministic source order: ExtractionSource.id is a uuid4 PK, so
+            # anything keyed on it reshuffles the prompt every run (I1).
+            .order_by(ExtractionSource.kind, ExtractionSource.ref, RawExtraction.id)
         )
     )
+
+    if not raw_extractions:
+        email.status = "error"
+        email.error_detail = "no raw extractions to normalize"
+        session.flush()
+        return 0
 
     model = get_settings().llm_model
 
@@ -69,17 +76,22 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
             )
         added = len(payments)
     else:
+        if not out.is_remittance:
+            flags = ["LLM: not a remittance"]
+        elif out.notes:
+            # normalize_email appends a "schema validation failed" note here when
+            # every draft was dropped -- surface it rather than a misleading
+            # "LLM returned no payments" (M-b).
+            flags = [f"LLM: {out.notes}"]
+        else:
+            flags = ["LLM returned no payments"]
         session.add(
             Extraction(
                 email_id=email.id,
                 canonical={},
                 confidence=Decimal("0"),
                 is_remittance=out.is_remittance,
-                validation_flags=(
-                    ["LLM: not a remittance"]
-                    if not out.is_remittance
-                    else ["LLM returned no payments"]
-                ),
+                validation_flags=flags,
                 llm_model=model,
                 prompt_version=PROMPT_VERSION,
                 raw_llm_response=out.model_dump(mode="json"),

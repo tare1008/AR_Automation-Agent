@@ -58,7 +58,13 @@ def test_live_normalization_over_fixtures(db_session, tmp_path) -> None:
             )
         )
 
-        out = NormalizerOutput.model_validate(rows[0].raw_llm_response)
+        # M-c: only the payment_index == 0 row carries the full LLM dump; the
+        # rest store just their own draft plus a pointer.
+        row0 = next(
+            (r for r in rows if (r.canonical.get("envelope") or {}).get("payment_index") == 0),
+            rows[0],
+        )
+        out = NormalizerOutput.model_validate(row0.raw_llm_response)
         flags_per_payment = [list(row.validation_flags) for row in rows]
         print(eval_report.summarise(name, out, flags_per_payment))
 

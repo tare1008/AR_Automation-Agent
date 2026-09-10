@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from ar_pipeline import worker
 from ar_pipeline.main import app
+from tests.normalize.llm_fake import FakeLLMClient
 
 
 def test_scheduler_registers_three_jobs():
@@ -37,6 +38,8 @@ def test_advance_pipeline_calls_advance_once(monkeypatch, caplog):
         return AdvanceStats(classified=2, extracted=1, normalized=3, errored=0)
 
     monkeypatch.setattr("ar_pipeline.pipeline.advance.advance_once", fake_advance_once)
+    # don't build the real AnthropicLLMClient here -- swap in the fake.
+    monkeypatch.setattr("ar_pipeline.normalize.llm_client.get_llm_client", lambda: FakeLLMClient())
 
     caplog.set_level(logging.INFO)
     worker.advance_pipeline()  # returns None by signature
