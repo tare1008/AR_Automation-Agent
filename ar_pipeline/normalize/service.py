@@ -50,7 +50,6 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
         subject=email.subject,
         raw_extractions=raw_extractions,
         llm_client=llm_client,
-        model_name=model,
     )
 
     if payments:

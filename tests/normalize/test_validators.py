@@ -116,6 +116,15 @@ def test_non_inr_currency_flag() -> None:
     assert "non-INR" in flags[0]
 
 
+def test_unknown_payment_reference_type_flag() -> None:
+    flags = validate_payload(_payload(header={"payment_reference_type": "wire"}))
+    assert flags == ["unknown payment_reference_type: wire"]
+
+
+def test_known_payment_reference_type_is_clean() -> None:
+    assert validate_payload(_payload(header={"payment_reference_type": "neft"})) == []
+
+
 def test_tolerance_within_two_cents_is_clean() -> None:
     assert (
         validate_payload(

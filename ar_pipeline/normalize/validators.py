@@ -16,6 +16,7 @@ from ar_pipeline.schema.canonical import RemittancePayload
 
 CHECK_VERSION = "1"
 
+_KNOWN_REFERENCE_TYPES = {"utr", "rtgs", "neft", "request_number", "cheque"}
 _TOLERANCE = Decimal("0.02")
 _MAX_BACKDATE = timedelta(days=400)
 _FUTURE_GRACE = timedelta(days=2)
@@ -83,5 +84,10 @@ def validate_payload(payload: RemittancePayload) -> list[str]:
     # 7. currency (informational; the pipeline is INR-only for now)
     if header.currency != "INR":
         flags.append(f"non-INR currency: {header.currency}")
+
+    # 8. payment_reference_type (informational; the field is not constrained)
+    ref_type = header.payment_reference_type
+    if ref_type is not None and ref_type not in _KNOWN_REFERENCE_TYPES:
+        flags.append(f"unknown payment_reference_type: {ref_type}")
 
     return flags

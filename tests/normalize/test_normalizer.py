@@ -46,7 +46,6 @@ def _call(out: NormalizerOutput, email_id: str = "em-1") -> tuple[NormalizerOutp
         subject="FW: Payment advice",
         raw_extractions=[{"text": "hi", "tables": [], "meta": {}}],
         llm_client=client,
-        model_name="claude-opus-5",
     )
 
 
@@ -114,19 +113,43 @@ def test_draft_with_no_line_items_surfaced_on_first_good_payment() -> None:
         )
     )
     assert len(results) == 1
+    assert results[0].payload.envelope.payment_index == 0  # index stays contiguous
     assert any("schema validation failed" in f for f in results[0].validation_flags)
 
 
-def test_invalid_header_draft_skipped_index_stays_contiguous() -> None:
+def test_malformed_currency_falls_back_to_inr_keeps_payment() -> None:
+    # I5: a bad currency must not drop the whole payment.
+    assert PaymentDraft(payer_name="x", total_paid_amount=Decimal("1")).currency == "INR"
+    assert (
+        PaymentDraft(payer_name="x", total_paid_amount=Decimal("1"), currency="Rupees").currency
+        == "INR"
+    )
+    out, results = _call(NormalizerOutput(is_remittance=True, payments=[_draft(currency="Rupees")]))
+    assert len(results) == 1
+    assert results[0].payload.header.currency == "INR"
+
+
+def test_nan_confidence_clamps_to_zero() -> None:
+    # M-a: Decimal("nan") < 0 raises InvalidOperation without the is_finite guard.
+    out, results = _call(
+        NormalizerOutput(is_remittance=True, payments=[_draft(confidence=float("nan"))])
+    )
+    assert len(results) == 1
+    assert results[0].confidence == Decimal("0.000")
+
+
+def test_raw_llm_response_deduped_past_payment_zero() -> None:
+    # M-c: payment 0 keeps the full dump; later payments store only their draft.
     out, results = _call(
         NormalizerOutput(
             is_remittance=True,
-            payments=[_draft(currency="Rupees"), _draft()],
+            payments=[_draft(payment_reference="UTR1"), _draft(payment_reference="UTR2")],
         )
     )
-    assert len(results) == 1
-    assert results[0].payload.envelope.payment_index == 0
-    assert any("schema validation failed" in f for f in results[0].validation_flags)
+    assert results[0].raw_llm_response["is_remittance"] is True
+    assert "payments" in results[0].raw_llm_response
+    assert set(results[1].raw_llm_response) == {"payment_draft", "see"}
+    assert results[1].raw_llm_response["payment_draft"]["payment_reference"] == "UTR2"
 
 
 def test_build_user_message_contents() -> None:

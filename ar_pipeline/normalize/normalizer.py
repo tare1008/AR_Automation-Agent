@@ -13,12 +13,13 @@ Pure module — no DB, no network, no import-time side effects. ``LLMRefused`` /
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.prompt import SYSTEM_PROMPT, build_user_message
@@ -55,6 +56,16 @@ class PaymentDraft(BaseModel):
     vendor_guess: str | None = None
     confidence: float = 0.0
 
+    @field_validator("currency", mode="before")
+    @classmethod
+    def _currency_fallback(cls, v: object) -> str:
+        # Losing a whole payment over a malformed currency ("Rupees") is wrong;
+        # the canonical Header only accepts a 3-letter code, so fall back to INR
+        # and let validator check 7 flag any genuine non-INR payment instead.
+        if isinstance(v, str) and re.fullmatch(r"[A-Za-z]{3}", v):
+            return v
+        return "INR"
+
 
 class NormalizerOutput(BaseModel):
     """The full structured response for one email."""
@@ -83,7 +94,6 @@ def normalize_email(
     subject: str,
     raw_extractions: list[dict],
     llm_client: LLMClient,
-    model_name: str,
 ) -> tuple[NormalizerOutput, list[NormalizedPayment]]:
     user = build_user_message(sender_address, subject, raw_extractions)
     out = llm_client.parse(system=SYSTEM_PROMPT, user=user, output_model=NormalizerOutput)
@@ -122,11 +132,22 @@ def normalize_email(
         flags = validate_payload(payload)
 
         conf = Decimal(str(draft.confidence))
-        if conf < _ZERO:
+        # a NaN/Inf confidence would raise InvalidOperation in the clamp below
+        if not conf.is_finite() or conf < _ZERO:
             conf = _ZERO
         elif conf > _ONE:
             conf = _ONE
         conf = conf.quantize(Decimal("0.001"))
+
+        # Payment 0 carries the full LLM dump; the rest store just their own
+        # draft plus a pointer, so a 12-payment email is not 12 JSONB copies.
+        if results:
+            payment_raw: dict = {
+                "payment_draft": draft.model_dump(mode="json"),
+                "see": "payment 0 raw_llm_response for the full LLM output",
+            }
+        else:
+            payment_raw = raw
 
         results.append(
             NormalizedPayment(
@@ -135,7 +156,7 @@ def normalize_email(
                 is_remittance=out.is_remittance,
                 validation_flags=flags,
                 notes=out.notes,
-                raw_llm_response=raw,
+                raw_llm_response=payment_raw,
             )
         )
         next_index += 1
