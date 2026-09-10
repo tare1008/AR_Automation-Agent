@@ -119,6 +119,60 @@ def retry_action(
     return RedirectResponse("/review/errors?flash=Retry+queued", status_code=303)
 
 
+@router.post("/{extraction_id}/edit")
+async def edit_action(
+    request: Request,
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.forms import parse_form_to_canonical
+    from ar_pipeline.review.service import ReviewError, save_edits
+
+    raw = await request.form()
+    approve = raw.get("approve") == "1"
+    canonical = parse_form_to_canonical({k: v for k, v in raw.items() if isinstance(v, str)})
+    try:
+        save_edits(session, extraction_id, user, canonical, approve=approve)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
+    if approve:
+        return RedirectResponse("/review?flash=Approved", status_code=303)
+    return RedirectResponse(f"/review/{extraction_id}?flash=Saved", status_code=303)
+
+
+@router.post("/{extraction_id}/reject")
+def reject_action(
+    extraction_id: uuid.UUID,
+    reason: str = Form(default=""),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, reject_extraction
+
+    try:
+        reject_extraction(session, extraction_id, user, reason)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse("/review?flash=Rejected", status_code=303)
+
+
+@router.post("/{extraction_id}/reprocess")
+def reprocess_action(
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, load_detail, reprocess_email
+
+    try:
+        view = load_detail(session, extraction_id)
+        reprocess_email(session, view.email.id)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse("/review?flash=Reprocessing", status_code=303)
+
+
 @router.get("/{extraction_id}", response_class=HTMLResponse)
 def detail_page(
     request: Request,
