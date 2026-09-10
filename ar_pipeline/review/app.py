@@ -88,6 +88,23 @@ def logout() -> Response:
 
 
 @router.get("", response_class=HTMLResponse)
+def journey_page(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import list_journey
+
+    return _render(
+        request,
+        "journey.html",
+        user=user,
+        rows=list_journey(session),
+        flash=request.query_params.get("flash"),
+    )
+
+
+@router.get("/queue", response_class=HTMLResponse)
 def queue_page(
     request: Request,
     user: User = Depends(require_user),

@@ -55,6 +55,98 @@ class DetailView:
     edits: list[ExtractionEdit]
 
 
+@dataclass(frozen=True)
+class JourneyExtraction:
+    id: uuid.UUID
+    payment_index: int
+    outcome: str
+    confidence: Decimal | None
+    flag_count: int
+    delivery: str
+
+
+@dataclass(frozen=True)
+class JourneyRow:
+    email_id: uuid.UUID
+    subject: str
+    sender_address: str
+    received_at: datetime
+    attachment_count: int
+    stage: str
+    error_detail: str | None
+    extractions: list[JourneyExtraction]
+
+
+_STAGE_LABELS = {
+    "new": "Received",
+    "classified": "Classified",
+    "extracted": "Extracted",
+    "normalized": "Normalizing",
+    "review": "Awaiting review",
+    "done": "Complete",
+    "error": "Error",
+}
+
+
+def _extraction_outcome(ext: Extraction) -> str:
+    if ext.status == "approved":
+        return "auto-approved" if ext.reviewed_by == "auto" else "approved"
+    if ext.status == "pending_review":
+        if not ext.is_remittance or not ext.canonical:
+            return "not a remittance"
+        return "awaiting review"
+    if ext.status == "rejected":
+        return "rejected"
+    return "superseded"
+
+
+def list_journey(session: Session) -> list[JourneyRow]:
+    email_rows = session.execute(
+        select(Email, func.count(Attachment.id))
+        .outerjoin(Attachment, Attachment.email_id == Email.id)
+        .group_by(Email.id)
+        .order_by(Email.received_at.desc())
+    ).all()
+
+    extractions_by_email: dict[uuid.UUID, list[Extraction]] = {}
+    for ext in session.scalars(select(Extraction).order_by(Extraction.created_at.asc())):
+        extractions_by_email.setdefault(ext.email_id, []).append(ext)
+
+    delivery_status_by_extraction: dict[uuid.UUID, str] = {}
+    for extraction_id, status in session.execute(select(Delivery.extraction_id, Delivery.status)):
+        delivery_status_by_extraction[extraction_id] = status
+
+    out: list[JourneyRow] = []
+    for email, attachment_count in email_rows:
+        exts: list[JourneyExtraction] = []
+        for ext in extractions_by_email.get(email.id, []):
+            env = ext.canonical.get("envelope") if isinstance(ext.canonical, dict) else None
+            idx = env.get("payment_index", 0) if isinstance(env, dict) else 0
+            exts.append(
+                JourneyExtraction(
+                    id=ext.id,
+                    payment_index=int(idx) if isinstance(idx, int) else 0,
+                    outcome=_extraction_outcome(ext),
+                    confidence=ext.confidence,
+                    flag_count=len(ext.validation_flags or []),
+                    delivery=delivery_status_by_extraction.get(ext.id, "—"),
+                )
+            )
+        out.append(
+            JourneyRow(
+                email_id=email.id,
+                subject=email.subject,
+                sender_address=email.sender_address,
+                received_at=email.received_at,
+                attachment_count=attachment_count,
+                stage=_STAGE_LABELS.get(email.status, email.status),
+                error_detail=email.error_detail,
+                extractions=exts,
+            )
+        )
+    return out
+
+
 def list_pending(session: Session) -> list[QueueRow]:
     rows = session.execute(
         select(Extraction, Email)
