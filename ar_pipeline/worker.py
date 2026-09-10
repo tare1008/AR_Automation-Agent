@@ -35,7 +35,22 @@ def advance_pipeline() -> None:
 
 
 def run_deliveries() -> None:
-    log.info("run_deliveries: no-op")
+    from ar_pipeline.config import get_settings
+    from ar_pipeline.db.base import get_session
+    from ar_pipeline.deliver import backend_client, deliverer
+
+    if not get_settings().backend_url:
+        log.info("run_deliveries: backend_url not set")
+        return None
+
+    with get_session() as session:
+        stats = deliverer.run_deliveries(session, backend_client.get_backend_client())
+    log.info(
+        "run_deliveries: %d delivered, %d failed, %d retrying",
+        stats.delivered,
+        stats.failed,
+        stats.retrying,
+    )
     return None
 
 

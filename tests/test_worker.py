@@ -18,12 +18,43 @@ def test_scheduler_job_defaults_applied():
     assert sched._job_defaults["misfire_grace_time"] == 300
 
 
-def test_run_deliveries_is_noop(caplog):
+def _settings_with(**over):
+    from ar_pipeline.config import Settings
+
+    base = Settings().model_dump()
+    base.update(over)
+    return Settings(**base)
+
+
+def test_run_deliveries_noop_when_backend_url_unset(monkeypatch, caplog):
     import logging
 
+    monkeypatch.setattr("ar_pipeline.config.get_settings", lambda: _settings_with(backend_url=""))
     caplog.set_level(logging.INFO)
     worker.run_deliveries()
-    assert "run_deliveries: no-op" in caplog.text
+    assert "backend_url not set" in caplog.text
+
+
+def test_run_deliveries_calls_deliverer(monkeypatch, caplog):
+    import logging
+
+    from ar_pipeline.deliver.deliverer import DeliveryStats
+
+    calls = []
+
+    def fake_run(session, backend_client, *, batch=20, now=None):
+        calls.append((session, backend_client))
+        return DeliveryStats(delivered=2, failed=1, retrying=3)
+
+    monkeypatch.setattr(
+        "ar_pipeline.config.get_settings", lambda: _settings_with(backend_url="https://b/api")
+    )
+    monkeypatch.setattr("ar_pipeline.deliver.deliverer.run_deliveries", fake_run)
+    monkeypatch.setattr("ar_pipeline.deliver.backend_client.get_backend_client", lambda: object())
+    caplog.set_level(logging.INFO)
+    worker.run_deliveries()
+    assert len(calls) == 1
+    assert "2 delivered, 1 failed, 3 retrying" in caplog.text
 
 
 def test_advance_pipeline_calls_advance_once(monkeypatch, caplog):
