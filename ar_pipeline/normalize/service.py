@@ -59,21 +59,22 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
         llm_client=llm_client,
     )
 
+    rows: list[Extraction] = []
     if payments:
         for payment in payments:
-            session.add(
-                Extraction(
-                    email_id=email.id,
-                    canonical=payment.payload.model_dump(mode="json"),
-                    confidence=payment.confidence,
-                    is_remittance=payment.is_remittance,
-                    validation_flags=list(payment.validation_flags),
-                    llm_model=model,
-                    prompt_version=PROMPT_VERSION,
-                    raw_llm_response=dict(payment.raw_llm_response),
-                    status="pending_review",
-                )
+            row = Extraction(
+                email_id=email.id,
+                canonical=payment.payload.model_dump(mode="json"),
+                confidence=payment.confidence,
+                is_remittance=payment.is_remittance,
+                validation_flags=list(payment.validation_flags),
+                llm_model=model,
+                prompt_version=PROMPT_VERSION,
+                raw_llm_response=dict(payment.raw_llm_response),
+                status="pending_review",
             )
+            session.add(row)
+            rows.append(row)
         added = len(payments)
     else:
         if not out.is_remittance:
@@ -102,4 +103,13 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
 
     email.status = "review"
     session.flush()
+    # the normalizer minted a placeholder uuid for envelope.extraction_id
+    # before these rows had a PK; make it authoritative now.
+    for row in rows:
+        env = row.canonical.get("envelope")
+        if isinstance(env, dict):
+            # top-level reassignment so MutableDict tracks the change
+            row.canonical["envelope"] = {**env, "extraction_id": str(row.id)}
+    if rows:
+        session.flush()
     return added
