@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ar_pipeline.config import get_settings
 from ar_pipeline.db.base import get_session
+from ar_pipeline.pipeline.routing import AUTO_REVIEWER
 from ar_pipeline.review.auth import (
     COOKIE_NAME,
     User,
@@ -65,6 +66,8 @@ def login_submit(
     provider = get_auth_provider()
     if name.strip() == "":
         return _render(request, "login.html", error="Enter your name.")
+    if name.strip().lower() == AUTO_REVIEWER:
+        return _render(request, "login.html", error='"auto" is a reserved name — pick another.')
     if not provider.check_password(password):
         return _render(request, "login.html", error="That password is incorrect.")
     token = provider.issue_session(name.strip())
@@ -184,7 +187,11 @@ def extraction_view_page(
         raise HTTPException(status_code=404, detail="not found") from None
 
     if request.query_params.get("format") == "json":
-        return Response(view.canonical_json, media_type="application/json")
+        return Response(
+            view.canonical_json,
+            media_type="application/json",
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
     return _render(request, "extraction.html", user=user, view=view)
 
 

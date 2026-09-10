@@ -22,6 +22,7 @@ from ar_pipeline.db.models import Email, Extraction, ExtractionSource, RawExtrac
 from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.normalizer import normalize_email
 from ar_pipeline.normalize.prompt import PROMPT_VERSION
+from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue, settle_email
 
 __all__ = ["normalize_one"]
 
@@ -115,11 +116,6 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
 
     threshold = get_settings().auto_approve_min_confidence
     if threshold > 0:
-        # deferred import: ar_pipeline.pipeline's __init__ imports advance,
-        # which imports this module -- a top-level import here would be
-        # circular. By call time this module is fully initialized.
-        from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue
-
         for row in rows:
             if (
                 row.is_remittance
@@ -129,7 +125,5 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
                 and float(row.confidence) >= threshold
             ):
                 approve_and_queue(session, row, reviewed_by=AUTO_REVIEWER)
-        if rows and all(r.status != "pending_review" for r in rows):
-            email.status = "done"
-        session.flush()
+    settle_email(session, email)
     return added

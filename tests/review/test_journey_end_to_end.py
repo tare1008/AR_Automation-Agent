@@ -45,31 +45,32 @@ def test_end_to_end_journey_split(client, db_session, tmp_path, monkeypatch):
     import ar_pipeline.config as cfg
 
     cfg.get_settings.cache_clear()
+    try:
+        from ar_pipeline.normalize.llm_client import get_llm_client
+        from ar_pipeline.pipeline.advance import advance_once
 
-    from ar_pipeline.normalize.llm_client import get_llm_client
-    from ar_pipeline.pipeline.advance import advance_once
+        store = LocalBlobStore(str(tmp_path))
+        vision = FakeVisionExtractor()
+        for name in FIXTURE_NAMES:
+            load_email(name, db_session, store)
+        for _ in range(3):
+            advance_once(db_session, store, vision, get_llm_client())
 
-    store = LocalBlobStore(str(tmp_path))
-    vision = FakeVisionExtractor()
-    for name in FIXTURE_NAMES:
-        load_email(name, db_session, store)
-    for _ in range(3):
-        advance_once(db_session, store, vision, get_llm_client())
+        exts = db_session.scalars(select(Extraction)).all()
+        auto = [x for x in exts if x.status == "approved" and x.reviewed_by == "auto"]
+        pend = [x for x in exts if x.status == "pending_review"]
+        assert auto and pend, f"expected a split; auto={len(auto)} pending={len(pend)}"
 
-    exts = db_session.scalars(select(Extraction)).all()
-    auto = [x for x in exts if x.status == "approved" and x.reviewed_by == "auto"]
-    pend = [x for x in exts if x.status == "pending_review"]
-    assert auto and pend, f"expected a split; auto={len(auto)} pending={len(pend)}"
+        # the journey page shows both
+        text = client.get("/review").text
+        assert "auto-approved" in text.lower() and "awaiting review" in text.lower()
 
-    # the journey page shows both
-    text = client.get("/review").text
-    assert "auto-approved" in text.lower() and "awaiting review" in text.lower()
-
-    # deliver the auto-approved ones to the stub
-    backend = BackendClient(
-        base_url="http://stub",
-        http=TestClient(stub_app),  # type: ignore[arg-type]
-    )  # TestClient is an httpx.Client
-    run_deliveries(db_session, backend)
-    assert len(RECEIVED) == len(auto)
-    cfg.get_settings.cache_clear()
+        # deliver the auto-approved ones to the stub
+        backend = BackendClient(
+            base_url="http://stub",
+            http=TestClient(stub_app),  # type: ignore[arg-type]
+        )  # TestClient is an httpx.Client
+        run_deliveries(db_session, backend)
+        assert len(RECEIVED) == len(auto)
+    finally:
+        cfg.get_settings.cache_clear()

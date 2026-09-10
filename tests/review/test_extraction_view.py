@@ -34,6 +34,7 @@ def test_extraction_raw_json_endpoint(client, seed_pending):
     r = client.get(f"/review/extraction/{ext.id}?format=json")
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("application/json")
+    assert r.headers["x-content-type-options"] == "nosniff"
     body = json.loads(r.text)
     assert body["envelope"]["extraction_id"]
 
