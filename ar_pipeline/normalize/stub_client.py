@@ -23,8 +23,10 @@ _NOTE = (
 )
 _PLACEHOLDER_PAYER = "(stub — set the payer name)"
 
-# 1,23,456.78 / 12,345 / 1234.56 — must have a grouping comma or a 2-dp decimal
-_AMOUNT_RE = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|(?<![\d.,])\d+\.\d{2}\b")
+# grouped (1,23,456.78 / 12,345) or a decimal amount (1234.56) — the confident tier
+_AMOUNT_RE = re.compile(r"(?<![\d.,])\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|(?<![\d.,])\d+\.\d{1,2}\b")
+# a plain 4-9 digit integer (500000) — used only when the confident tier is empty
+_PLAIN_INT_RE = re.compile(r"(?<![\d.,])\d{4,9}(?![\d.,])")
 # a bank reference: the keyword, then an alnum token that contains at least one digit
 _REF_KEYWORD_RE = re.compile(
     r"\b(UTR|RTGS|NEFT|IMPS)\b[\s:#/-]*((?=[A-Za-z0-9]*\d)[A-Za-z0-9]{6,22})", re.I
@@ -40,14 +42,22 @@ _INVOICE_RE = re.compile(
 
 
 def _amounts(text: str) -> list[Decimal]:
-    found: list[Decimal] = []
-    for raw in _AMOUNT_RE.findall(text):
-        try:
-            value = Decimal(raw.replace(",", ""))
-        except InvalidOperation:
-            continue
-        if value >= 1:
-            found.append(value)
+    def _parse(raws: list[str]) -> list[Decimal]:
+        out: list[Decimal] = []
+        for raw in raws:
+            try:
+                value = Decimal(raw.replace(",", ""))
+            except InvalidOperation:
+                continue
+            if value >= 1:
+                out.append(value)
+        return out
+
+    found = _parse(_AMOUNT_RE.findall(text))
+    if not found:
+        # no comma-grouped or decimal amount anywhere — fall back to plain
+        # integers, ignoring anything year-sized to skip stray dates.
+        found = [v for v in _parse(_PLAIN_INT_RE.findall(text)) if not 1900 <= v <= 2100]
     return sorted(set(found), reverse=True)
 
 

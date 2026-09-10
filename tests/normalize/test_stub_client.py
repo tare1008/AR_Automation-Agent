@@ -53,3 +53,12 @@ def test_no_amounts_still_produces_a_reviewable_draft():
 def test_ignores_small_numbers_and_years():
     out = _parse("2026 payment run, 3 invoices, total 45,000.00")
     assert out.payments[0].total_paid_amount == Decimal("45000.00")
+
+
+def test_plain_integer_amount_used_only_as_a_fallback():
+    # no grouped/decimal amount anywhere -> the bare integer is picked up
+    out = _parse("Payment of 500000 made today (ref 2026)")
+    assert out.payments[0].total_paid_amount == Decimal("500000")
+    # ... but a grouped amount wins and the bare integer is ignored
+    out2 = _parse("total 12,34,567.00 against PO 8899001")
+    assert out2.payments[0].total_paid_amount == Decimal("1234567.00")
