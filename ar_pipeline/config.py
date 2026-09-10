@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     llm_provider: str = "anthropic"
     llm_model: str = "claude-opus-5"
+    auto_approve_min_confidence: float = 0.0
 
     poll_interval_seconds: int = 300
     advance_interval_seconds: int = 60

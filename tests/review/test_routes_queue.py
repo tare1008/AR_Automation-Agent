@@ -1,6 +1,6 @@
 def test_queue_lists_pending_extractions(client, seed_pending):
     email, ext = seed_pending()
-    r = client.get("/review")
+    r = client.get("/review/queue")
     assert r.status_code == 200
     assert email.subject in r.text
     assert f"/review/{ext.id}" in r.text
@@ -10,7 +10,7 @@ def test_queue_shows_flag_badges(client, seed_pending, db_session):
     email, ext = seed_pending()
     ext.validation_flags = ["totals do not reconcile"]
     db_session.flush()
-    r = client.get("/review")
+    r = client.get("/review/queue")
     assert r.status_code == 200
     assert "totals do not reconcile" in r.text
 

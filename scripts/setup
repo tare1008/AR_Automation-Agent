@@ -26,15 +26,30 @@ import pathlib
 import secrets
 
 path = pathlib.Path(".env")
+lines = path.read_text(encoding="utf-8").splitlines()
+
+# 0.9 is calibrated only against LLM_PROVIDER=stub's confidence scale (see
+# .env.example) -- only seed it when this .env is (still) using the stub;
+# otherwise leave auto-send disabled (0) rather than ship a live threshold
+# nobody calibrated against a real model.
+current: dict[str, str] = {}
+for line in lines:
+    if "=" in line and not line.lstrip().startswith("#"):
+        key, _, value = line.partition("=")
+        current[key.strip()] = value.strip()
+llm_provider = current.get("LLM_PROVIDER", "").strip().lower() or "stub"
+auto_approve_default = "0.9" if llm_provider == "stub" else "0"
+
 fill_if_blank = {
     "BACKEND_URL": "http://localhost:9000",
     "REVIEW_AUTH_SECRET": "demo",
     "REVIEW_SESSION_SECRET": secrets.token_hex(24),
+    "AUTO_APPROVE_MIN_CONFIDENCE": auto_approve_default,
 }
 force = {"REVIEW_COOKIE_SECURE": "false"}  # local demo is plain http
 out: list[str] = []
 seen: set[str] = set()
-for line in path.read_text(encoding="utf-8").splitlines():
+for line in lines:
     if "=" in line and not line.lstrip().startswith("#"):
         key, _, value = line.partition("=")
         key = key.strip()

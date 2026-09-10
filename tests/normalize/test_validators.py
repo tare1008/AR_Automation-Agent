@@ -58,7 +58,7 @@ def _payload(**overrides: Any) -> RemittancePayload:
 
 
 def test_check_version_constant() -> None:
-    assert CHECK_VERSION == "1"
+    assert CHECK_VERSION == "2"
 
 
 def test_clean_payload_has_no_flags() -> None:
@@ -237,3 +237,13 @@ def test_negative_amount_paid_flag() -> None:
 def test_negative_total_paid_amount_flag() -> None:
     flags = validate_payload(_payload(header={"total_paid_amount": Decimal("-1.00")}))
     assert any("negative total_paid_amount" in f for f in flags)
+
+
+def test_missing_payer_name_flag() -> None:
+    flags = validate_payload(_payload(header={"payer_name": "   "}))
+    assert "header: payer name is missing" in flags
+
+
+def test_present_payer_name_is_clean() -> None:
+    flags = validate_payload(_payload(header={"payer_name": "Acme Corp"}))
+    assert "header: payer name is missing" not in flags

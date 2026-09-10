@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ar_pipeline.config import get_settings
 from ar_pipeline.db.base import get_session
+from ar_pipeline.pipeline.routing import AUTO_REVIEWER
 from ar_pipeline.review.auth import (
     COOKIE_NAME,
     User,
@@ -65,6 +66,8 @@ def login_submit(
     provider = get_auth_provider()
     if name.strip() == "":
         return _render(request, "login.html", error="Enter your name.")
+    if name.strip().lower() == AUTO_REVIEWER:
+        return _render(request, "login.html", error='"auto" is a reserved name — pick another.')
     if not provider.check_password(password):
         return _render(request, "login.html", error="That password is incorrect.")
     token = provider.issue_session(name.strip())
@@ -88,6 +91,23 @@ def logout() -> Response:
 
 
 @router.get("", response_class=HTMLResponse)
+def journey_page(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import list_journey
+
+    return _render(
+        request,
+        "journey.html",
+        user=user,
+        rows=list_journey(session),
+        flash=request.query_params.get("flash"),
+    )
+
+
+@router.get("/queue", response_class=HTMLResponse)
 def queue_page(
     request: Request,
     user: User = Depends(require_user),
@@ -150,6 +170,29 @@ def resend_delivery_action(
     except ReviewError as exc:
         return RedirectResponse(f"/review/errors?flash={quote(str(exc))}", status_code=303)
     return RedirectResponse("/review/errors?flash=Resend+queued", status_code=303)
+
+
+@router.get("/extraction/{extraction_id}", response_class=HTMLResponse)
+def extraction_view_page(
+    request: Request,
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, load_extraction_view
+
+    try:
+        view = load_extraction_view(session, extraction_id)
+    except ReviewError:
+        raise HTTPException(status_code=404, detail="not found") from None
+
+    if request.query_params.get("format") == "json":
+        return Response(
+            view.canonical_json,
+            media_type="application/json",
+            headers={"X-Content-Type-Options": "nosniff"},
+        )
+    return _render(request, "extraction.html", user=user, view=view)
 
 
 @router.post("/{extraction_id}/edit")

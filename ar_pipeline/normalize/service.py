@@ -22,6 +22,7 @@ from ar_pipeline.db.models import Email, Extraction, ExtractionSource, RawExtrac
 from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.normalizer import normalize_email
 from ar_pipeline.normalize.prompt import PROMPT_VERSION
+from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue, settle_email
 
 __all__ = ["normalize_one"]
 
@@ -112,4 +113,17 @@ def normalize_one(session: Session, email: Email, llm_client: LLMClient) -> int:
             row.canonical["envelope"] = {**env, "extraction_id": str(row.id)}
     if rows:
         session.flush()
+
+    threshold = get_settings().auto_approve_min_confidence
+    if threshold > 0:
+        for row in rows:
+            if (
+                row.is_remittance
+                and row.canonical
+                and not row.validation_flags
+                and row.confidence is not None
+                and float(row.confidence) >= threshold
+            ):
+                approve_and_queue(session, row, reviewed_by=AUTO_REVIEWER)
+    settle_email(session, email)
     return added

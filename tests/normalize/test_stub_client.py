@@ -10,15 +10,22 @@ def _parse(user: str) -> NormalizerOutput:
     return StubLLMClient().parse(system="ignored", user=user, output_model=NormalizerOutput)
 
 
-def test_returns_one_low_confidence_remittance():
+def test_returns_one_remittance_draft():
     out = _parse("From: a@b.com\nSubject: advice\n\nsome text")
     assert isinstance(out, NormalizerOutput)
     assert out.is_remittance is True
     assert "stub" in out.notes.lower()
     assert len(out.payments) == 1
     p = out.payments[0]
-    assert p.confidence == 0.15
+    assert 0.0 < p.confidence <= 0.95
     assert len(p.line_items) == 1  # always >=1 so RemittancePayload construction succeeds
+
+
+def test_confidence_reflects_how_much_was_found():
+    bare = _parse("Subject: hi\n\nplease see attached")
+    rich = _parse("NEFT ref SBIN225551234567 — INV-2026-9 — total 1,23,456.78")
+    assert bare.payments[0].confidence < 0.5
+    assert rich.payments[0].confidence >= 0.9
 
 
 def test_pulls_the_largest_amount_as_total():
@@ -42,6 +49,16 @@ def test_does_not_mistake_the_word_invoice_for_an_id():
         assert _parse(f"total 5,000.00\n{text}").payments[0].line_items[0].invoice_number == ""
 
 
+def test_invoice_number_falls_back_to_labeled_table_header_code():
+    out = _parse("Invoice Number\n1 | 2-Feb-26 | FCI2510007033 | 39.702")
+    assert out.payments[0].line_items[0].invoice_number == "FCI2510007033"
+
+
+def test_invoice_number_falls_back_to_bill_no_label():
+    out = _parse("Bill No: ACM2510006275\ndated 3-Feb-26")
+    assert out.payments[0].line_items[0].invoice_number == "ACM2510006275"
+
+
 def test_no_amounts_still_produces_a_reviewable_draft():
     out = _parse("Subject: FW: remittance\n\nplease find attached")
     p = out.payments[0]
@@ -62,3 +79,18 @@ def test_plain_integer_amount_used_only_as_a_fallback():
     # ... but a grouped amount wins and the bare integer is ignored
     out2 = _parse("total 12,34,567.00 against PO 8899001")
     assert out2.payments[0].total_paid_amount == Decimal("1234567.00")
+
+
+def test_payer_name_found_from_a_beneficiary_label():
+    out = _parse("Beneficiary's name: ACME METALS LIMITED\nBeneficiary's bank: SOME BANK")
+    assert out.payments[0].payer_name == "ACME METALS LIMITED"
+
+
+def test_payer_name_found_from_a_vendor_name_label():
+    out = _parse("Vendor Code : 220417 Vendor Name : ACME METALS LTD\nDocument No : 150000")
+    assert out.payments[0].payer_name == "ACME METALS LTD"
+
+
+def test_payer_name_empty_when_no_label_present():
+    out = _parse("Subject: hi\n\nplease see attached, no name label here")
+    assert out.payments[0].payer_name == ""

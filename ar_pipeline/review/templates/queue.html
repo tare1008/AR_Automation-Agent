@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Queue — AR Review{% endblock %}
 {% block content %}
-<h1>Review queue <small>({{ rows|length }})</small></h1>
+<h1>Review queue <small>— extractions that need a human</small></h1>
+<p><a href="/review">← Full journey</a></p>
 {% if not rows %}<p>Nothing waiting for review.</p>{% endif %}
 {% if rows %}
 <table>
@@ -20,7 +21,8 @@
     </td>
     <td>{{ "%.2f"|format(r.confidence) if r.confidence is not none else "—" }}</td>
     <td>{% for f in r.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}</td>
-    <td><a href="/review/{{ r.extraction_id }}">Open</a></td>
+    <td><a href="/review/{{ r.extraction_id }}">Open</a>
+      &middot; <a href="/review/extraction/{{ r.extraction_id }}">JSON</a></td>
   </tr>
   {% endfor %}
   </tbody>

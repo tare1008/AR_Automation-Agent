@@ -66,8 +66,10 @@ protocol with Entra ID OIDC — no route changes.
 
 `./scripts/setup` leaves `.env` ready for an **offline** demo — no API key:
 `LLM_PROVIDER=stub`, a generated `REVIEW_SESSION_SECRET`, `REVIEW_AUTH_SECRET=demo`,
-`REVIEW_COOKIE_SECURE=false`, `BACKEND_URL=http://localhost:9000`. Nothing to
-edit for a first run.
+`REVIEW_COOKIE_SECURE=false`, `BACKEND_URL=http://localhost:9000`,
+`AUTO_APPROVE_MIN_CONFIDENCE=0.9` (flag-free extractions at or above this
+confidence skip review and deliver automatically — `0` reviews everything).
+Nothing to edit for a first run.
 
 **`LLM_PROVIDER=stub`** runs the whole pipeline with no API key and no
 network: it regex-parses the raw text for amounts / a bank reference /
@@ -101,8 +103,13 @@ uv run ar-pipeline tick --repeat 3
 uv run ar-pipeline status
 ```
 
-Open <http://localhost:8000/review>, log in with any name + password `demo`.
-The extraction is in the queue — open it, correct anything in the form,
+Open <http://localhost:8000/review>, log in with any name + password `demo`
+— the **Journey**. Some emails are already **Auto-approved & delivered**
+(flag-free, high confidence); others are **Awaiting review**. Click any
+row's JSON link to see the canonical payload. Open
+<http://localhost:9000/> to see what the backend received.
+
+The rest are in the review queue — open one, correct anything in the form,
 **Save & Approve**. Back in terminal 4:
 
 ```bash

@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from ar_pipeline.schema.canonical import RemittancePayload
 
-CHECK_VERSION = "1"
+CHECK_VERSION = "2"
 
 _KNOWN_REFERENCE_TYPES = {"utr", "rtgs", "neft", "imps", "request_number", "cheque"}
 _TOLERANCE = Decimal("0.02")
@@ -89,5 +89,9 @@ def validate_payload(payload: RemittancePayload) -> list[str]:
     ref_type = header.payment_reference_type
     if ref_type is not None and ref_type not in _KNOWN_REFERENCE_TYPES:
         flags.append(f"unknown payment_reference_type: {ref_type}")
+
+    # 9. payer name must be present
+    if not header.payer_name.strip():
+        flags.append("header: payer name is missing")
 
     return flags

@@ -43,6 +43,13 @@ def test_login_requires_a_name(client):
     assert "name" in r.text.lower()
 
 
+def test_login_rejects_the_reserved_auto_name(client):
+    r = client.post("/review/login", data={"password": "test-shared-secret", "name": "Auto"})
+    assert r.status_code == 200
+    assert "reserved" in r.text.lower()
+    assert COOKIE_NAME not in r.cookies
+
+
 def test_logout_clears_cookie(client):
     client.post("/review/login", data={"password": "test-shared-secret", "name": "Asha"})
     r = client.post("/review/logout")
