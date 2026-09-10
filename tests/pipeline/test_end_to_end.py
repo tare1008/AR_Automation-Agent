@@ -61,7 +61,7 @@ def _haystack(session, email_id) -> str:
 
 
 @pytest.mark.parametrize("name", FIXTURE_NAMES)
-def test_fixture_reaches_extracted_with_marker(name, db_session, tmp_path):
+def test_fixture_flows_to_review(name, db_session, tmp_path):
     store = LocalBlobStore(str(tmp_path))
     email = load_email(name, db_session, store)
     vision = FakeVisionExtractor()
@@ -83,3 +83,5 @@ def test_fixture_reaches_extracted_with_marker(name, db_session, tmp_path):
     assert rows
     assert all(r.status == "pending_review" for r in rows)
     assert all(r.prompt_version == "2" for r in rows)
+    # _generic_output() always yields a remittance -> every row has a canonical header.
+    assert all(r.canonical.get("header") for r in rows)
