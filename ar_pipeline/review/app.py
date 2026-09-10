@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pathlib
+import uuid
 from collections.abc import Iterator
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -74,11 +76,44 @@ def queue_page(
     user: User = Depends(require_user),
     session: Session = Depends(get_db),
 ) -> Response:
-    # queue rows are filled in Task 6; empty list keeps the redirect target valid.
+    from ar_pipeline.review.service import list_pending
+
     return _render(
         request,
         "queue.html",
         user=user,
-        rows=[],
+        rows=list_pending(session),
         flash=request.query_params.get("flash"),
     )
+
+
+@router.get("/errors", response_class=HTMLResponse)
+def errors_page(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import list_errored
+
+    return _render(
+        request,
+        "errors.html",
+        user=user,
+        emails=list_errored(session),
+        flash=request.query_params.get("flash"),
+    )
+
+
+@router.post("/errors/{email_id}/retry")
+def retry_action(
+    email_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, retry_email
+
+    try:
+        retry_email(session, email_id)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/errors?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse("/review/errors?flash=Retry+queued", status_code=303)

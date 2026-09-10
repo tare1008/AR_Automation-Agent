@@ -5,8 +5,21 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from fastapi.testclient import TestClient
 
 from ar_pipeline.db.models import Email, Extraction
+
+
+@pytest.fixture
+def client(db_session):
+    from ar_pipeline.main import app
+    from ar_pipeline.review.app import get_db
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    with TestClient(app, follow_redirects=False) as c:
+        c.post("/review/login", data={"password": "test-shared-secret", "name": "Asha"})
+        yield c
+    app.dependency_overrides.clear()
 
 
 def _canonical(payment_index: int = 0) -> dict:
