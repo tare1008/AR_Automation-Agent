@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import anthropic
+import pydantic
 import pytest
 from pydantic import BaseModel
 
@@ -7,6 +9,7 @@ from ar_pipeline.normalize.llm_client import (
     AnthropicLLMClient,
     LLMError,
     LLMRefused,
+    LLMTruncated,
     get_llm_client,
 )
 
@@ -47,6 +50,29 @@ def test_parse_raises_llm_error_on_none_output():
     client = MagicMock()
     client.messages.parse.return_value = _resp(None)
     with pytest.raises(LLMError):
+        AnthropicLLMClient(client=client).parse(system="s", user="u", output_model=_Out)
+
+
+def test_parse_wraps_connection_error():
+    client = MagicMock()
+    client.messages.parse.side_effect = anthropic.APIConnectionError(request=MagicMock())
+    with pytest.raises(LLMError):
+        AnthropicLLMClient(client=client).parse(system="s", user="u", output_model=_Out)
+
+
+def test_parse_raises_truncated_on_max_tokens():
+    client = MagicMock()
+    client.messages.parse.return_value = _resp(None, stop="max_tokens")
+    with pytest.raises(LLMTruncated):
+        AnthropicLLMClient(client=client).parse(system="s", user="u", output_model=_Out)
+
+
+def test_parse_wraps_pydantic_validation_error():
+    client = MagicMock()
+    client.messages.parse.side_effect = pydantic.ValidationError.from_exception_data(
+        "NormalizerOutput", [{"type": "missing", "loc": ("is_remittance",), "input": {}}]
+    )
+    with pytest.raises(LLMError, match="schema validation"):
         AnthropicLLMClient(client=client).parse(system="s", user="u", output_model=_Out)
 
 

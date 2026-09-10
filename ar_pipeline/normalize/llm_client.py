@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
+import pydantic
 from pydantic import BaseModel
 
 from ar_pipeline.config import get_settings
@@ -18,6 +19,10 @@ class LLMError(Exception):
 
 class LLMRefused(LLMError):
     """Raised when the model refuses to answer."""
+
+
+class LLMTruncated(LLMError):
+    """Raised when the model's structured output hit the ``max_tokens`` limit."""
 
 
 class LLMClient(Protocol):
@@ -51,11 +56,17 @@ class AnthropicLLMClient:
                 messages=[{"role": "user", "content": user}],
                 output_format=output_model,
             )
-        except anthropic.APIStatusError as exc:
+        except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
+            # SDK retries transient failures (max_retries=2); this catches a persistent one.
             raise LLMError(str(exc)) from exc
+        except pydantic.ValidationError as exc:
+            raise LLMError(f"LLM response failed schema validation: {exc}") from exc
 
         if response.stop_reason == "refusal":
             raise LLMRefused("LLM refused to answer")
+
+        if response.stop_reason == "max_tokens":
+            raise LLMTruncated("LLM output hit the max_tokens limit")
 
         parsed = response.parsed_output
         if parsed is None:
