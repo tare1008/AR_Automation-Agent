@@ -66,6 +66,21 @@ def test_diff_reports_added_and_removed_line_item():
     assert ("line_items[1].invoice_number", "INV-2", None) in removed
 
 
+def test_diff_reports_added_and_removed_deduction():
+    old = {"header": {}, "line_items": [{"invoice_number": "INV-1", "deductions": []}]}
+    new = {
+        "header": {},
+        "line_items": [
+            {"invoice_number": "INV-1", "deductions": [{"type": "tds", "amount": "10"}]}
+        ],
+    }
+    added = canonical_diff(old, new)
+    assert ("line_items[0].deductions[0].type", None, "tds") in added
+    assert ("line_items[0].deductions[0].amount", None, "10") in added
+    removed = canonical_diff(new, old)
+    assert ("line_items[0].deductions[0].type", "tds", None) in removed
+
+
 def test_diff_empty_when_identical():
     doc = {"header": {"payer_name": "Acme"}, "line_items": [{"invoice_number": "INV-1"}]}
     assert canonical_diff(doc, doc) == []

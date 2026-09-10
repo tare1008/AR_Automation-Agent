@@ -29,7 +29,8 @@ Environment:
 | Var | Meaning |
 |---|---|
 | `REVIEW_AUTH_SECRET` | shared login password (required — the app refuses to serve `/review` without it) |
-| `REVIEW_SESSION_SECRET` | key used to sign the session cookie (defaults to a dev value; set a real one in production) |
+| `REVIEW_SESSION_SECRET` | **required** — signs the session cookie; the app refuses to start the auth provider while it is the dev default |
+| `REVIEW_COOKIE_SECURE` | set to `false` only for local plain-HTTP development (default `true`) |
 
 Run locally:
 
