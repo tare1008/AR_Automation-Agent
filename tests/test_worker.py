@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from ar_pipeline import worker
 from ar_pipeline.main import app
+from tests.normalize.llm_fake import FakeLLMClient
 
 
 def test_scheduler_registers_three_jobs():
@@ -32,16 +33,19 @@ def test_advance_pipeline_calls_advance_once(monkeypatch, caplog):
 
     calls: list[tuple] = []
 
-    def fake_advance_once(session, blob_store, vision_extractor, *, batch=20):
-        calls.append((session, blob_store, vision_extractor))
-        return AdvanceStats(classified=2, extracted=1, errored=0)
+    def fake_advance_once(session, blob_store, vision_extractor, llm_client, *, batch=20):
+        calls.append((session, blob_store, vision_extractor, llm_client))
+        return AdvanceStats(classified=2, extracted=1, normalized=3, errored=0)
 
     monkeypatch.setattr("ar_pipeline.pipeline.advance.advance_once", fake_advance_once)
+    # don't build the real AnthropicLLMClient here -- swap in the fake.
+    monkeypatch.setattr("ar_pipeline.normalize.llm_client.get_llm_client", lambda: FakeLLMClient())
 
     caplog.set_level(logging.INFO)
     worker.advance_pipeline()  # returns None by signature
     assert len(calls) == 1
-    assert "2 classified, 1 extracted, 0 errored" in caplog.text
+    assert calls[0][3] is not None  # an llm client was built and passed through
+    assert "2 classified, 1 extracted, 3 normalized, 0 errored" in caplog.text
 
 
 def test_poll_inbox_calls_run_poll():

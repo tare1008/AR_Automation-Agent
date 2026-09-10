@@ -239,18 +239,27 @@ tests/
 
 ### normalize/
 
-- `llm_client.py` — `LLMClient` protocol (`complete`, `complete_vision`,
-  `complete_structured`). Anthropic implementation first; the
-  interface keeps provider swappable.
-- `normalizer.py` — build a prompt from the raw extraction (tables as
-  Markdown/JSON + text + sender address/domain + vendor hint if the
-  sender matches a `vendor` row). Call the LLM with a structured-output
-  JSON schema derived from `schema/canonical.py`. Response includes the
-  canonical structure, per-field `confidence`, an overall
-  `is_remittance` boolean, and free-text `notes`.
-- `validators.py` — deterministic post-checks: line items sum to
-  header total (within a tolerance); dates parseable; single currency;
-  amounts non-negative. Emits `validation_flags`.
+- `llm_client.py` — `LLMClient` protocol: `parse(*, system, user,
+  output_model: type[BaseModel]) -> BaseModel` (structured output).
+  `AnthropicLLMClient` (lazy client, `messages.parse`) is the first
+  implementation; the interface keeps the provider swappable.
+  Raises `LLMRefused` / `LLMTruncated` / `LLMError` (the last also wraps
+  API status, timeout, connection, and response-validation failures).
+- `normalizer.py` — `build_user_message` renders the raw extractions
+  (deterministic source order) + sender + subject. `SYSTEM_PROMPT`
+  (versioned, `PROMPT_VERSION`) instructs the model; the LLM returns a
+  `NormalizerOutput` (`is_remittance`, `notes`, a list of `PaymentDraft`).
+  One payload per distinct payment. `normalize_email` fills the
+  `Envelope` we own (uuid `extraction_id`, `source_email_id`, contiguous
+  0-based `payment_index`), builds each `RemittancePayload`, runs the
+  validators, and returns overall per-payment `confidence` (0-1) — not
+  per-field confidence, which an LLM cannot give reliably.
+- `validators.py` — deterministic post-checks: the line identity
+  `invoice_amount - sum(deductions) == amount_paid` and the payment
+  identity `total_paid_amount == sum(line amount_paid) - sum(header
+  deductions)`, both within `Decimal("0.02")`; parseable dates and
+  payment-date sanity; single currency; negative amounts; duplicate /
+  empty invoice numbers. Emits `validation_flags` (`CHECK_VERSION`).
 - Writes an `extraction` row: `canonical` (jsonb), `confidence`,
   `is_remittance`, `validation_flags`, `llm_model`, `prompt_version`,
   `status=pending_review`.
@@ -423,13 +432,15 @@ worker processes (brainstorming Approach B) if volume grows.
 | Tiny image / disclaimer | skipped, not an error |
 | Corrupt xlsx / pdf | that source errors; siblings continue |
 | Scanned PDF, no text layer | routed to LLM vision |
-| LLM timeout | retry with backoff |
-| LLM output fails schema | `extraction` created at `pending_review` with raw response attached; no crash |
-| `is_remittance = false` | goes to review, flagged "may not be a remittance" |
+| LLM timeout / connection error | the SDK retries (`max_retries=2`); a persistent failure → `LLMError` → email `error` |
+| LLM output truncated (`max_tokens`) | `LLMTruncated` → email `error` (surfaced in the review UI's error tab) |
+| LLM per-*payment* output fails the canonical schema | that payment is skipped; a `"schema validation failed"` note is attached to the surviving rows (or, if none survive, to the single `is_remittance=false` row) |
+| LLM *whole-response* fails `NormalizerOutput` | wrapped as `LLMError` → email `error` with the validation detail (structured outputs make this rare) |
+| `is_remittance = false` / no payments | one `extraction` row at `pending_review`, `canonical={}`, raw response attached, flagged |
 | Totals / dates off | `validation_flags`; still reviewable |
 | Delivery `5xx`/`429`/timeout | backoff ladder, then `failed` |
 | Delivery `4xx` | `failed` immediately; surfaced in UI |
-| Poison item | 3 failed attempts at a stage → `error`, needs a human |
+| A stage fails for one email | that email → `error` with the exception detail; **no automatic retry** — a human reprocesses it from the review UI (a per-stage attempt counter is a possible future addition). Other emails in the batch are unaffected (per-email savepoint + commit). |
 
 Nothing is dropped silently — every failure lands in a queryable state
 with a UI affordance to retry.

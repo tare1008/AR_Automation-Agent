@@ -11,6 +11,7 @@ from ar_pipeline.pipeline.advance import AdvanceStats, advance_once
 from ar_pipeline.storage import LocalBlobStore
 from tests.extract.vision_fake import FakeVisionExtractor
 from tests.fixtures.loader import load_email
+from tests.normalize.llm_fake import FakeLLMClient
 
 
 @pytest.fixture
@@ -21,7 +22,7 @@ def store(tmp_path):
 def test_advance_once_classifies_then_extracts_body_email(db_session, store):
     email = load_email("05_direct_body_freetext", db_session, store)
 
-    stats = advance_once(db_session, store, FakeVisionExtractor())
+    stats = advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())
     assert isinstance(stats, AdvanceStats)
     assert stats.classified == 1
     assert stats.extracted == 0
@@ -32,7 +33,7 @@ def test_advance_once_classifies_then_extracts_body_email(db_session, store):
     ).all()
     assert len(sources) >= 1
 
-    stats2 = advance_once(db_session, store, FakeVisionExtractor())
+    stats2 = advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())
     assert stats2.extracted == 1
     db_session.refresh(email)
     assert email.status == "extracted"
@@ -77,8 +78,8 @@ def test_email_with_only_skipped_sources_errors(db_session, store):
     db_session.flush()
     att.blob_url = store.put(f"{email.id}/{att.id}/logo.png", tiny_png)
 
-    advance_once(db_session, store, FakeVisionExtractor())
-    advance_once(db_session, store, FakeVisionExtractor())
+    advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())
+    advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())
 
     db_session.refresh(email)
     assert email.status == "error"
@@ -121,13 +122,13 @@ def test_one_bad_source_does_not_discard_healthy_siblings(db_session, store, mon
     db_session.flush()
     att.blob_url = store.put(f"{email.id}/{att.id}/advice.pdf", buf.getvalue())
 
-    advance_once(db_session, store, FakeVisionExtractor())  # classify
+    advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())  # classify
 
     def boom(_data: bytes):
         raise RuntimeError("pdf extractor exploded")
 
     monkeypatch.setattr("ar_pipeline.pipeline.advance.extract_pdf", boom)
-    advance_once(db_session, store, FakeVisionExtractor())  # extract
+    advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())  # extract
 
     db_session.refresh(email)
     assert email.status == "error"
@@ -153,7 +154,7 @@ def test_poison_extractor_is_isolated_per_email(db_session, store, monkeypatch):
     body_email = load_email("05_direct_body_freetext", db_session, store)
 
     # first pass: classify both
-    advance_once(db_session, store, FakeVisionExtractor())
+    advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())
     db_session.refresh(excel_email)
     db_session.refresh(body_email)
     assert excel_email.status == "classified"
@@ -164,7 +165,7 @@ def test_poison_extractor_is_isolated_per_email(db_session, store, monkeypatch):
 
     monkeypatch.setattr("ar_pipeline.pipeline.advance.extract_excel", boom)
 
-    stats = advance_once(db_session, store, FakeVisionExtractor())
+    stats = advance_once(db_session, store, FakeVisionExtractor(), FakeLLMClient())
 
     assert stats.errored == 1
     db_session.refresh(excel_email)
