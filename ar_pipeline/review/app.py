@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 import uuid
 from collections.abc import Iterator
 from urllib.parse import quote
@@ -28,6 +29,14 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter(prefix="/review")
 
 _COOKIE_MAX_AGE = 7 * 24 * 60 * 60
+
+_SAFE_INLINE_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+}
 
 
 def get_db() -> Iterator[Session]:
@@ -216,8 +225,16 @@ def attachment_stream(
     if ext is None or att is None or att.email_id != ext.email_id:
         raise HTTPException(status_code=404, detail="not found")
     data = get_blob_store().get(attachment_blob_key(att))
+    ct = (att.content_type or "").split(";")[0].strip().lower()
+    inline = ct in _SAFE_INLINE_TYPES
+    safe_name = re.sub(r"[^A-Za-z0-9._ -]", "_", att.filename or "attachment") or "attachment"
+    disposition = "inline" if inline else "attachment"
     return Response(
         content=data,
-        media_type=att.content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{att.filename}"'},
+        media_type=ct if inline else "application/octet-stream",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{safe_name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
     )

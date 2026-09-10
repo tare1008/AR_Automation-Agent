@@ -37,3 +37,57 @@ def test_attachment_stream_rejects_foreign_attachment(client, seed_pending, db_s
     email, ext = seed_pending()
     r = client.get(f"/review/{ext.id}/attachment/{uuid.uuid4()}")
     assert r.status_code == 404
+
+
+def test_attachment_html_is_forced_to_download(
+    client, seed_pending, db_session, tmp_path, monkeypatch
+):
+    from ar_pipeline.db.models import Attachment
+    from ar_pipeline.storage import LocalBlobStore, attachment_blob_key
+
+    email, ext = seed_pending()
+    att = Attachment(
+        email_id=email.id,
+        filename='evil".html',
+        content_type="text/html",
+        size=10,
+        blob_url="x",
+        sha256="a" * 64,
+    )
+    db_session.add(att)
+    db_session.flush()
+
+    store = LocalBlobStore(str(tmp_path))
+    store.put(attachment_blob_key(att), b"<script>alert(1)</script>")
+    monkeypatch.setattr("ar_pipeline.storage.get_blob_store", lambda: store)
+
+    r = client.get(f"/review/{ext.id}/attachment/{att.id}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/octet-stream")
+    assert r.headers["content-disposition"].startswith("attachment;")
+    assert '"' not in r.headers["content-disposition"].split("filename=")[1][1:-1]
+    assert r.headers["x-content-type-options"] == "nosniff"
+
+
+def test_attachment_pdf_still_inline(client, seed_pending, db_session, tmp_path, monkeypatch):
+    from ar_pipeline.db.models import Attachment
+    from ar_pipeline.storage import LocalBlobStore, attachment_blob_key
+
+    email, ext = seed_pending()
+    att = Attachment(
+        email_id=email.id,
+        filename="advice.pdf",
+        content_type="application/pdf",
+        size=3,
+        blob_url="x",
+        sha256="b" * 64,
+    )
+    db_session.add(att)
+    db_session.flush()
+    store = LocalBlobStore(str(tmp_path))
+    store.put(attachment_blob_key(att), b"%PDF")
+    monkeypatch.setattr("ar_pipeline.storage.get_blob_store", lambda: store)
+
+    r = client.get(f"/review/{ext.id}/attachment/{att.id}")
+    assert r.headers["content-type"].startswith("application/pdf")
+    assert r.headers["content-disposition"].startswith("inline;")
