@@ -30,6 +30,7 @@ fill_if_blank = {
     "BACKEND_URL": "http://localhost:9000",
     "REVIEW_AUTH_SECRET": "demo",
     "REVIEW_SESSION_SECRET": secrets.token_hex(24),
+    "AUTO_APPROVE_MIN_CONFIDENCE": "0.9",
 }
 force = {"REVIEW_COOKIE_SECURE": "false"}  # local demo is plain http
 out: list[str] = []
