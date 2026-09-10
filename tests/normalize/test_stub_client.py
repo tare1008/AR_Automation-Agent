@@ -10,7 +10,7 @@ def _parse(user: str) -> NormalizerOutput:
     return StubLLMClient().parse(system="ignored", user=user, output_model=NormalizerOutput)
 
 
-def test_returns_one_low_confidence_remittance():
+def test_returns_one_remittance_draft():
     out = _parse("From: a@b.com\nSubject: advice\n\nsome text")
     assert isinstance(out, NormalizerOutput)
     assert out.is_remittance is True
@@ -79,3 +79,18 @@ def test_plain_integer_amount_used_only_as_a_fallback():
     # ... but a grouped amount wins and the bare integer is ignored
     out2 = _parse("total 12,34,567.00 against PO 8899001")
     assert out2.payments[0].total_paid_amount == Decimal("1234567.00")
+
+
+def test_payer_name_found_from_a_beneficiary_label():
+    out = _parse("Beneficiary's name: ACME METALS LIMITED\nBeneficiary's bank: SOME BANK")
+    assert out.payments[0].payer_name == "ACME METALS LIMITED"
+
+
+def test_payer_name_found_from_a_vendor_name_label():
+    out = _parse("Vendor Code : 220417 Vendor Name : ACME METALS LTD\nDocument No : 150000")
+    assert out.payments[0].payer_name == "ACME METALS LTD"
+
+
+def test_payer_name_empty_when_no_label_present():
+    out = _parse("Subject: hi\n\nplease see attached, no name label here")
+    assert out.payments[0].payer_name == ""
