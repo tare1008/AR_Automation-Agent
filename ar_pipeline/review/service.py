@@ -124,10 +124,14 @@ def _close_email_if_done(session: Session, email: Email) -> None:
         email.status = "done"
 
 
-def approve_extraction(session: Session, extraction_id: uuid.UUID, user: User) -> None:
-    ext = _require_pending(session.get(Extraction, extraction_id))
+def _check_approvable(ext: Extraction) -> None:
     if not ext.is_remittance or not ext.canonical:
         raise ReviewError("cannot approve a non-remittance / empty extraction — reject it instead")
+
+
+def approve_extraction(session: Session, extraction_id: uuid.UUID, user: User) -> None:
+    ext = _require_pending(session.get(Extraction, extraction_id))
+    _check_approvable(ext)
     ext.status = "approved"
     ext.reviewed_by = user.name
     ext.reviewed_at = func.now()
@@ -169,6 +173,8 @@ def save_edits(
     approve: bool,
 ) -> list[FieldEdit]:
     ext = _require_pending(session.get(Extraction, extraction_id))
+    if approve:
+        _check_approvable(ext)
     stored = dict(ext.canonical) if isinstance(ext.canonical, dict) else {}
     envelope = stored.get("envelope") or {}
     full = {

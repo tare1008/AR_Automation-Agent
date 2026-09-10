@@ -117,6 +117,32 @@ def test_save_edits_with_approve_true_approves(db_session, seed_pending):
     assert ext.status == "approved"
 
 
+def test_save_edits_approve_true_on_non_remittance_writes_nothing(db_session, seed_pending):
+    from ar_pipeline.review.forms import parse_form_to_canonical
+
+    email, ext = seed_pending(is_remittance=False, canonical={})
+    form = {
+        "header.payer_name": "Acme",
+        "header.currency": "INR",
+        "header.total_paid_amount": "10.00",
+        "line_items[0].invoice_number": "INV-1",
+        "line_items[0].invoice_amount": "10.00",
+        "line_items[0].amount_paid": "10.00",
+    }
+    with pytest.raises(ReviewError):
+        save_edits(db_session, ext.id, U, parse_form_to_canonical(form), approve=True)
+    from sqlalchemy import select
+
+    from ar_pipeline.db.models import ExtractionEdit
+
+    assert (
+        db_session.scalars(
+            select(ExtractionEdit).where(ExtractionEdit.extraction_id == ext.id)
+        ).all()
+        == []
+    )
+
+
 def test_reprocess_supersedes_and_reopens_email(db_session, seed_pending):
     email, ext = seed_pending()
     reprocess_email(db_session, email.id)
