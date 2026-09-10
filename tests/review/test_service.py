@@ -152,6 +152,21 @@ def test_reprocess_supersedes_and_reopens_email(db_session, seed_pending):
     assert email.status == "classified"
 
 
+def test_reprocess_refuses_when_a_sibling_is_already_approved(db_session, seed_pending):
+    from ar_pipeline.db.models import Extraction
+
+    email, ext1 = seed_pending()
+    ext1.status = "approved"
+    _email2, ext2 = seed_pending()  # a second, independent pending extraction on the SAME email
+    ext2.email_id = email.id
+    db_session.flush()
+    with pytest.raises(ReviewError, match="already has an approved payment"):
+        reprocess_email(db_session, email.id)
+    db_session.refresh(ext2)
+    assert ext2.status == "pending_review"  # untouched
+    assert db_session.get(Extraction, ext2.id).email_id == email.id
+
+
 def test_retry_errored_email_without_sources_goes_new(db_session, seed_pending):
     email, ext = seed_pending()
     email.status = "error"

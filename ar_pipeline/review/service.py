@@ -321,6 +321,16 @@ def reprocess_email(session: Session, email_id: uuid.UUID) -> None:
     )
     if not pending:
         raise ReviewError("nothing to reprocess — no pending extraction for this email")
+    already_approved = session.scalar(
+        select(func.count())
+        .select_from(Extraction)
+        .where(Extraction.email_id == email_id, Extraction.status == "approved")
+    )
+    if already_approved:
+        raise ReviewError(
+            "cannot reprocess — this email already has an approved payment; "
+            "reject the pending one instead if it needs correcting"
+        )
     for ext in pending:
         ext.status = "superseded"
     email.status = "classified"
