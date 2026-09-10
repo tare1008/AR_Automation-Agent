@@ -13,13 +13,14 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from fastapi import HTTPException, Request
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from itsdangerous import BadData, URLSafeTimedSerializer
 
 from ar_pipeline.config import get_settings
 
 COOKIE_NAME = "ar_review_session"
 _SALT = "ar-review-session-v1"
 _DEFAULT_MAX_AGE = 7 * 24 * 60 * 60
+_DEV_SESSION_SECRET = "dev-insecure-session-key"  # keep in sync with config.py default
 
 
 @dataclass(frozen=True)
@@ -48,7 +49,7 @@ class SharedSecretAuth:
     def check_password(self, password: str) -> bool:
         if not self._secret or not password:
             return False
-        return hmac.compare_digest(password, self._secret)
+        return hmac.compare_digest(password.encode("utf-8"), self._secret.encode("utf-8"))
 
     def issue_session(self, name: str) -> str:
         return self._serializer.dumps({"name": name})
@@ -58,7 +59,7 @@ class SharedSecretAuth:
             return None
         try:
             data = self._serializer.loads(token, max_age=self._max_age)
-        except (BadSignature, SignatureExpired):
+        except BadData:
             return None
         name = data.get("name") if isinstance(data, dict) else None
         if not isinstance(name, str) or not name:
@@ -71,10 +72,12 @@ def get_auth_provider() -> AuthProvider:
     secret = s.review_auth_secret.get_secret_value()
     if not secret:
         raise RuntimeError("review_auth_secret is not set")
-    return SharedSecretAuth(
-        shared_secret=secret,
-        signing_key=s.review_session_secret.get_secret_value(),
-    )
+    session_key = s.review_session_secret.get_secret_value()
+    if not session_key or session_key == _DEV_SESSION_SECRET:
+        raise RuntimeError(
+            "review_session_secret is still the dev default — set a real REVIEW_SESSION_SECRET"
+        )
+    return SharedSecretAuth(shared_secret=secret, signing_key=session_key)
 
 
 def current_user(request: Request) -> User | None:

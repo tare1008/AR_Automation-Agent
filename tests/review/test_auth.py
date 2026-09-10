@@ -8,6 +8,36 @@ def _auth() -> SharedSecretAuth:
     return SharedSecretAuth(shared_secret="s3cret", signing_key="signing", max_age_seconds=1000)
 
 
+def test_get_auth_provider_rejects_default_session_secret(monkeypatch):
+    import ar_pipeline.config as config_module
+
+    monkeypatch.setenv("REVIEW_AUTH_SECRET", "a-real-secret")
+    monkeypatch.setenv("REVIEW_SESSION_SECRET", "dev-insecure-session-key")
+    config_module.get_settings.cache_clear()
+    from ar_pipeline.review.auth import get_auth_provider
+
+    with pytest.raises(RuntimeError, match="dev default"):
+        get_auth_provider()
+    config_module.get_settings.cache_clear()
+
+
+def test_get_auth_provider_rejects_blank_auth_secret(monkeypatch):
+    import ar_pipeline.config as config_module
+
+    monkeypatch.setenv("REVIEW_AUTH_SECRET", "")
+    config_module.get_settings.cache_clear()
+    from ar_pipeline.review.auth import get_auth_provider
+
+    with pytest.raises(RuntimeError, match="review_auth_secret"):
+        get_auth_provider()
+    config_module.get_settings.cache_clear()
+
+
+def test_check_password_handles_non_ascii():
+    a = SharedSecretAuth(shared_secret="s3cret", signing_key="k")
+    assert a.check_password("pä") is False  # no TypeError
+
+
 def test_check_password_true_only_for_exact_secret():
     a = _auth()
     assert a.check_password("s3cret") is True

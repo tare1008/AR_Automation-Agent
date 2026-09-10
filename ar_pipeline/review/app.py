@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from ar_pipeline.config import get_settings
 from ar_pipeline.db.base import get_session
 from ar_pipeline.review.auth import (
     COOKIE_NAME,
@@ -68,7 +69,14 @@ def login_submit(
         return _render(request, "login.html", error="That password is incorrect.")
     token = provider.issue_session(name.strip())
     resp = RedirectResponse("/review", status_code=303)
-    resp.set_cookie(COOKIE_NAME, token, max_age=_COOKIE_MAX_AGE, httponly=True, samesite="lax")
+    resp.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=get_settings().review_cookie_secure,
+    )
     return resp
 
 
