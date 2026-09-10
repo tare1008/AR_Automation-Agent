@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# One-shot local setup: dependencies, .env, embedded Postgres, schema.
+# Linux / macOS. A Windows machine needs WSL2 first.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is not installed — see https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 1
+fi
+
+echo "==> uv sync"
+uv sync
+
+if [ ! -f .env ]; then
+  echo "==> creating .env from .env.example"
+  cp .env.example .env
+fi
+
+echo "==> starting embedded Postgres and writing its URLs into .env"
+uv run python scripts/dev_db.py --write-env
+
+echo "==> alembic upgrade head"
+uv run alembic upgrade head
+
+cat <<'EOF'
+
+Setup complete.
+
+Offline demo (no API key): set LLM_PROVIDER=stub in .env
+Real extraction:            set ANTHROPIC_API_KEY=sk-ant-... in .env
+Review UI login:            set REVIEW_AUTH_SECRET and REVIEW_SESSION_SECRET in .env
+
+Then, in four terminals:
+  1. uv run python scripts/dev_db.py serve                 # keep this open
+  2. uv run uvicorn stub_backend.app:app --port 9000
+  3. uv run uvicorn ar_pipeline.main:app --port 8000
+  4. uv run ar-pipeline ingest-eml tests/fixtures/emails/*.eml
+     uv run ar-pipeline tick --repeat 3
+     open http://localhost:8000/review
+EOF

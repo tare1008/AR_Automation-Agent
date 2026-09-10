@@ -123,4 +123,8 @@ class AnthropicVisionExtractor:
 
 
 def get_vision_extractor() -> VisionExtractor:
+    if get_settings().llm_provider == "stub":
+        from ar_pipeline.extract.stub_vision import StubVisionExtractor
+
+        return StubVisionExtractor()
     return AnthropicVisionExtractor(model=get_settings().llm_model)

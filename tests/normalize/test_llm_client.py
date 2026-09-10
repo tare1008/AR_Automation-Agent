@@ -85,3 +85,15 @@ def test_get_llm_client_rejects_unknown_provider(monkeypatch):
     with pytest.raises(LLMError):
         get_llm_client()
     config_module.get_settings.cache_clear()
+
+
+def test_get_llm_client_returns_stub_for_stub_provider(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://x:y@localhost/z")
+    monkeypatch.setenv("LLM_PROVIDER", "stub")
+    import ar_pipeline.config as config_module
+
+    config_module.get_settings.cache_clear()
+    from ar_pipeline.normalize.stub_client import StubLLMClient
+
+    assert isinstance(get_llm_client(), StubLLMClient)
+    config_module.get_settings.cache_clear()
