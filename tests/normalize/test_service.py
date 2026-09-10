@@ -65,7 +65,7 @@ def test_normalize_one_single_payment(db_session, store):
     assert row.status == "pending_review"
     assert row.canonical["header"]["total_paid_amount"] is not None
     assert row.llm_model == "claude-opus-5"
-    assert row.prompt_version == "1"
+    assert row.prompt_version == "2"
 
 
 def test_normalize_one_not_a_remittance(db_session, store):

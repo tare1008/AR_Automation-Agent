@@ -50,8 +50,8 @@ def _call(out: NormalizerOutput, email_id: str = "em-1") -> tuple[NormalizerOutp
     )
 
 
-def test_prompt_version_is_one() -> None:
-    assert PROMPT_VERSION == "1"
+def test_prompt_version_is_two() -> None:
+    assert PROMPT_VERSION == "2"
     assert isinstance(SYSTEM_PROMPT, str) and len(SYSTEM_PROMPT) > 200
 
 

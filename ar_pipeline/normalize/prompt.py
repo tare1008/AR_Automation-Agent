@@ -13,7 +13,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 _MAX_USER_CHARS = 40_000
 _TRUNCATION_MARKER = "\n\n[... content truncated ...]"
@@ -46,6 +46,11 @@ on the same invoice. Put a deduction on the line item it applies to; put a \
 deduction that applies to the whole payment (not a specific invoice) in \
 `header_deductions`.
 
+Every payment must have at least one line item. If the material gives only a \
+payment total with no per-invoice breakdown, emit ONE line item: use the \
+invoice or reference number you can find (or an empty invoice number if there \
+is none), set `invoice_amount` and `amount_paid` to the payment total.
+
 Two identities must hold. Per line item: `invoice_amount - sum(deductions) = \
 amount_paid`. Per payment: `total_paid_amount = sum(line item amount_paid) - \
 sum(header_deductions)`.
@@ -61,6 +66,11 @@ recompute them.
 otherwise null; `payment_reference_type` is one of "utr", "rtgs", "neft", \
 "request_number", "cheque", or null. Many advices carry no bank reference at \
 all — that is fine, leave both null.
+
+`vendor_guess` is the vendor / remitter's name as best you can tell from the \
+content. `payer_id` is the payer's customer / vendor code if the advice shows \
+one. `payment_method` is "RTGS" / "NEFT" / "cheque" / "net banking" etc. if \
+stated. `invoice_date` is the invoice's own date, not the payment date.
 
 `confidence` (0 to 1) is your calibrated confidence that this payment has been \
 transcribed correctly and completely. `notes` is free text for anything a human \

@@ -82,4 +82,4 @@ def test_fixture_reaches_extracted_with_marker(name, db_session, tmp_path):
     rows = db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)).all()
     assert rows
     assert all(r.status == "pending_review" for r in rows)
-    assert all(r.prompt_version == "1" for r in rows)
+    assert all(r.prompt_version == "2" for r in rows)
