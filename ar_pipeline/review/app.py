@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Iterator
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -117,3 +117,53 @@ def retry_action(
     except ReviewError as exc:
         return RedirectResponse(f"/review/errors?flash={quote(str(exc))}", status_code=303)
     return RedirectResponse("/review/errors?flash=Retry+queued", status_code=303)
+
+
+@router.get("/{extraction_id}", response_class=HTMLResponse)
+def detail_page(
+    request: Request,
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    import nh3
+
+    from ar_pipeline.review.service import ReviewError, load_detail
+
+    try:
+        view = load_detail(session, extraction_id)
+    except ReviewError:
+        raise HTTPException(status_code=404, detail="not found") from None
+
+    body_html = nh3.clean(view.email.body_html) if view.email.body_html else ""
+    return _render(
+        request,
+        "detail.html",
+        user=user,
+        view=view,
+        canonical=view.extraction.canonical or {},
+        safe_body_html=body_html,
+        flash=request.query_params.get("flash"),
+    )
+
+
+@router.get("/{extraction_id}/attachment/{attachment_id}")
+def attachment_stream(
+    extraction_id: uuid.UUID,
+    attachment_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.db.models import Attachment, Extraction
+    from ar_pipeline.storage import attachment_blob_key, get_blob_store
+
+    ext = session.get(Extraction, extraction_id)
+    att = session.get(Attachment, attachment_id)
+    if ext is None or att is None or att.email_id != ext.email_id:
+        raise HTTPException(status_code=404, detail="not found")
+    data = get_blob_store().get(attachment_blob_key(att))
+    return Response(
+        content=data,
+        media_type=att.content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{att.filename}"'},
+    )

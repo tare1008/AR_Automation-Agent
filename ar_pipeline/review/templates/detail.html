@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% macro deduction_row(scope, idx, d) %}
+<span class="dedrow">
+  <select name="{{ scope }}.deductions[{{ idx }}].type">
+    {% for t in ["tds","credit_note","advance_adjustment","discount","rounding","other"] %}
+    <option value="{{ t }}"{% if d and d.get("type")==t %} selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+  <input type="text" name="{{ scope }}.deductions[{{ idx }}].amount"
+         placeholder="amount" value="{{ d.get('amount') if d and d.get('amount') is not none else '' }}">
+  <input type="text" name="{{ scope }}.deductions[{{ idx }}].reason"
+         placeholder="reason" value="{{ d.get('reason') if d and d.get('reason') is not none else '' }}">
+  <button type="button" class="removededuction">×</button>
+</span>
+{% endmacro %}
+{% block title %}{{ view.email.subject }} — AR Review{% endblock %}
+{% block content %}
+<p><a href="/review">&larr; Back to queue</a></p>
+<h1>{{ view.email.subject }}</h1>
+<p class="meta">From {{ view.email.sender_address }} ·
+   received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·
+   confidence {{ "%.2f"|format(view.extraction.confidence) if view.extraction.confidence is not none else "—" }}</p>
+{% for f in view.extraction.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}
+{% if not view.extraction.is_remittance %}<span class="badge bad">LLM: not a remittance</span>{% endif %}
+
+<div class="detail">
+  <section class="pane">
+    <h2>Original</h2>
+    {% if safe_body_html %}
+      <iframe class="original" sandbox srcdoc="{{ safe_body_html }}"></iframe>
+    {% else %}
+      <pre class="raw">{{ view.email.body_text }}</pre>
+    {% endif %}
+    {% if view.attachments %}
+    <h3>Attachments</h3>
+    <ul>
+      {% for a in view.attachments %}
+      <li><a href="/review/{{ view.extraction.id }}/attachment/{{ a.id }}" target="_blank">
+        {{ a.filename }}</a> <span class="badge">{{ a.content_type }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <details>
+      <summary>Raw extraction ({{ view.raw_extractions|length }})</summary>
+      {% for raw in view.raw_extractions %}
+        <pre class="raw">{{ raw.get("text") or "" }}
+{% for table in raw.get("tables") or [] %}{% for row in table %}{{ row|join(" | ") }}
+{% endfor %}{% endfor %}</pre>
+      {% endfor %}
+    </details>
+  </section>
+
+  <section class="pane">
+    <h2>Canonical</h2>
+    <form method="post" action="/review/{{ view.extraction.id }}/edit" id="editform">
+      <fieldset>
+        <legend>Header</legend>
+        {% set h = canonical.get("header", {} ) %}
+        {% for f in ["payer_name","payer_id","payment_reference","payment_reference_type",
+                     "payment_date","payment_method","currency","total_paid_amount"] %}
+        <label>{{ f }}
+          <input type="text" name="header.{{ f }}" value="{{ h.get(f) if h.get(f) is not none else '' }}">
+        </label>
+        {% endfor %}
+        <div class="deductions" data-scope="header">
+          {% for d in h.get("deductions") or [] %}
+          {% set d_idx = loop.index0 %}
+          {{ deduction_row("header", d_idx, d) }}
+          {% endfor %}
+        </div>
+        <button type="button" class="adddeduction" data-scope="header">+ header deduction</button>
+      </fieldset>
+
+      <div id="lineitems">
+      {% for li in canonical.get("line_items") or [] %}
+        {% set li_idx = loop.index0 %}
+        <fieldset class="lineitem" data-index="{{ li_idx }}">
+          <legend>Line {{ li_idx }}</legend>
+          {% for f in ["invoice_number","invoice_date","invoice_amount","amount_paid"] %}
+          <label>{{ f }}
+            <input type="text" name="line_items[{{ li_idx }}].{{ f }}"
+                   value="{{ li.get(f) if li.get(f) is not none else '' }}">
+          </label>
+          {% endfor %}
+          <div class="deductions" data-scope="line_items[{{ li_idx }}]">
+            {% for d in li.get("deductions") or [] %}
+            {% set d_idx = loop.index0 %}
+            {{ deduction_row("line_items[" ~ li_idx ~ "]", d_idx, d) }}
+            {% endfor %}
+          </div>
+          <button type="button" class="adddeduction"
+                  data-scope="line_items[{{ li_idx }}]">+ line deduction</button>
+          <button type="button" class="removeline">remove line</button>
+        </fieldset>
+      {% endfor %}
+      </div>
+      <button type="button" id="addline">+ line item</button>
+
+      <div class="rowactions">
+        <button type="submit" name="approve" value="0">Save</button>
+        <button type="submit" name="approve" value="1">Save &amp; Approve</button>
+      </div>
+    </form>
+
+    <form method="post" action="/review/{{ view.extraction.id }}/reject" class="stack">
+      <label>Reject reason <input type="text" name="reason" required></label>
+      <button type="submit">Reject</button>
+    </form>
+    <form method="post" action="/review/{{ view.extraction.id }}/reprocess">
+      <button type="submit">Reprocess (re-run extraction)</button>
+    </form>
+
+    {% if view.edits %}
+    <h3>Edit history</h3>
+    <table>
+      <thead><tr><th>When</th><th>Who</th><th>Field</th><th>Old</th><th>New</th></tr></thead>
+      <tbody>
+      {% for e in view.edits %}
+      <tr><td>{{ e.edited_at.strftime("%Y-%m-%d %H:%M") }}</td><td>{{ e.edited_by }}</td>
+          <td>{{ e.field_path }}</td><td>{{ e.old_value }}</td><td>{{ e.new_value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/review/static/review.js"></script>{% endblock %}
