@@ -54,6 +54,24 @@ _PAYER_LABEL_RE = re.compile(
     r"(?:beneficiary|vendor|remitter|payer)'?s?\s*name\s*[:#]\s*([^\n|]{2,80})",
     re.I,
 )
+# an explicit non-INR currency code — INR is the default absent one of these.
+_CURRENCY_RE = re.compile(r"\b(USD|EUR|GBP|AED|SGD|AUD|CAD|CHF|JPY)\b")
+# language that says a payment already happened, or a bank reference is
+# present at all — either is a real remittance signal.
+_PAYMENT_DONE_RE = re.compile(
+    r"\b(paid|remitted|remittance|transferred|wired|value date|"
+    r"payment\s*(?:done|made|completed|processed|advice|confirmation)|"
+    r"amount\s*(?:paid|remitted))\b",
+    re.I,
+)
+# language typical of a chase / reminder for a payment that has NOT happened
+# yet — only consulted when no payment-done signal was found.
+_REMINDER_RE = re.compile(
+    r"\b(overdue|reminder|kindly\s*(?:process|arrange|expedite)|"
+    r"please\s*(?:process|remit|arrange)|payment\s*(?:is\s*)?pending|"
+    r"yet\s*to\s*(?:be\s*)?(?:pay|receive))\b",
+    re.I,
+)
 
 
 def _amounts(text: str) -> list[Decimal]:
@@ -104,6 +122,22 @@ def _payer_name(text: str) -> str:
     return m.group(1).strip() if m else _PAYER_UNKNOWN
 
 
+def _currency(text: str) -> str:
+    m = _CURRENCY_RE.search(text)
+    return m.group(1).upper() if m else "INR"
+
+
+def _is_remittance(text: str) -> bool:
+    """A payment that already happened (or carries a bank reference) is a
+    remittance; a chase/reminder for one that hasn't is not. Ambiguous text
+    defaults True — the stub only ever rules something OUT on a positive
+    reminder-language match with no payment-done signal, so it never flips
+    an existing real-remittance fixture."""
+    if _PAYMENT_DONE_RE.search(text) or _reference(text)[0]:
+        return True
+    return not _REMINDER_RE.search(text)
+
+
 def _draft(text: str) -> dict[str, object]:
     amounts = _amounts(text)
     top = amounts[0] if amounts else Decimal("0")
@@ -121,7 +155,7 @@ def _draft(text: str) -> dict[str, object]:
         "payer_name": _payer_name(text),
         "payment_reference": reference,
         "payment_reference_type": reference_type,
-        "currency": "INR",
+        "currency": _currency(text),
         "total_paid_amount": top,
         "line_items": [
             {
@@ -139,5 +173,12 @@ class StubLLMClient:
     parses ``user`` (the rendered raw extractions)."""
 
     def parse(self, *, system: str, user: str, output_model: type[T]) -> T:
-        data = {"is_remittance": True, "notes": _NOTE, "payments": [_draft(user)]}
+        if _is_remittance(user):
+            data = {"is_remittance": True, "notes": _NOTE, "payments": [_draft(user)]}
+        else:
+            data = {
+                "is_remittance": False,
+                "notes": _NOTE + " Classified as not-a-remittance (heuristic).",
+                "payments": [],
+            }
         return output_model.model_validate(data)
