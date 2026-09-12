@@ -173,6 +173,63 @@ def list_journey(session: Session) -> list[JourneyRow]:
     return out
 
 
+@dataclass(frozen=True)
+class ApprovedRow:
+    extraction_id: uuid.UUID
+    email_id: uuid.UUID
+    subject: str
+    sender_address: str
+    payment_index: int
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    confidence: Decimal | None
+    payer_name: str | None
+    currency: str | None
+    total_paid_amount: str | None
+    delivery: str
+
+
+def list_approved(session: Session) -> list[ApprovedRow]:
+    """Every approved extraction — auto-approved and human-approved alike,
+    newest reviewed first."""
+    rows = session.execute(
+        select(Extraction, Email)
+        .join(Email, Extraction.email_id == Email.id)
+        .where(Extraction.status == "approved")
+        .order_by(Extraction.reviewed_at.desc().nulls_last(), Extraction.created_at.desc())
+    ).all()
+
+    delivery_status_by_extraction: dict[uuid.UUID, str] = {}
+    for extraction_id, status in session.execute(select(Delivery.extraction_id, Delivery.status)):
+        delivery_status_by_extraction[extraction_id] = status
+
+    out: list[ApprovedRow] = []
+    for ext, email in rows:
+        canonical = ext.canonical if isinstance(ext.canonical, dict) else None
+        header_raw = canonical.get("header") if isinstance(canonical, dict) else None
+        header = header_raw if isinstance(header_raw, dict) else {}
+        envelope_raw = canonical.get("envelope") if isinstance(canonical, dict) else None
+        envelope = envelope_raw if isinstance(envelope_raw, dict) else {}
+        idx = envelope.get("payment_index", 0)
+        out.append(
+            ApprovedRow(
+                extraction_id=ext.id,
+                email_id=email.id,
+                subject=email.subject,
+                sender_address=email.sender_address,
+                payment_index=int(idx) if isinstance(idx, int) else 0,
+                reviewed_by=ext.reviewed_by,
+                reviewed_at=ext.reviewed_at,
+                confidence=ext.confidence,
+                payer_name=header.get("payer_name") or None,
+                currency=header.get("currency") or None,
+                total_paid_amount=header.get("total_paid_amount"),
+                delivery=delivery_status_by_extraction.get(ext.id, "—"),
+            )
+        )
+    return out
+
+
 def list_pending(session: Session) -> list[QueueRow]:
     rows = session.execute(
         select(Extraction, Email)
