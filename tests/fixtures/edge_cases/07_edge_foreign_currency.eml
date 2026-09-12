@@ -1,0 +1,44 @@
+From: AP Team <accounts@globalparts-export.example>
+To: AR Remittances <ar-remittances@acmemetals.example>
+Subject: Wire Transfer Confirmation - Invoice EXP-2026-0456
+Date: Sat, 07 Mar 2026 00:00:00 -0000
+Message-ID: <974922695674@globalparts-export.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============5807035258160421303=="
+
+--===============5807035258160421303==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Dear Sir,
+This is to confirm we have wired USD 45,000.00 via SWIFT (MT103) to your acco=
+unt towards Invoice EXP-2026-0456 dated 02-Mar-2026.
+
+SWIFT/UTR Reference: GTBUS20260304X7712
+Beneficiary's name: ACME METALS LTD
+Value Date: 04-Mar-2026
+
+Regards,
+Accounts Payable
+Global Parts Export Inc.
+
+--===============5807035258160421303==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body><pre>Dear Sir,
+This is to confirm we have wired USD 45,000.00 via SWIFT (MT103) to your acco=
+unt towards Invoice EXP-2026-0456 dated 02-Mar-2026.
+
+SWIFT/UTR Reference: GTBUS20260304X7712
+Beneficiary's name: ACME METALS LTD
+Value Date: 04-Mar-2026
+
+Regards,
+Accounts Payable
+Global Parts Export Inc.
+</pre></body></html>
+
+--===============5807035258160421303==--

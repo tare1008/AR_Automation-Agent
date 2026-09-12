@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Approved — AR Review{% endblock %}
+{% block content %}
+<h1>Approved <small>({{ rows|length }}) — auto-approved and human-approved payments</small></h1>
+<p><a href="/review">← Full journey</a></p>
+{% if not rows %}<p>Nothing approved yet.</p>{% endif %}
+{% if rows %}
+<table>
+  <thead><tr>
+    <th>Approved</th><th>By</th><th>From</th><th>Subject</th><th>Payment</th>
+    <th>Payer</th><th>Amount</th><th>Confidence</th><th>Delivery</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.reviewed_at.strftime("%Y-%m-%d %H:%M") if r.reviewed_at else "—" }}</td>
+    <td>
+      {% if r.reviewed_by == "auto" %}<span class="badge ok">Auto</span>
+      {% else %}{{ r.reviewed_by or "—" }}{% endif %}
+    </td>
+    <td>{{ r.sender_address }}</td>
+    <td>{{ r.subject }}</td>
+    <td>#{{ r.payment_index }}</td>
+    <td>{{ r.payer_name or "—" }}</td>
+    <td>{{ r.currency or "" }} {{ r.total_paid_amount if r.total_paid_amount is not none else "—" }}</td>
+    <td>{{ "%.2f"|format(r.confidence) if r.confidence is not none else "—" }}</td>
+    <td>
+      {% if r.delivery == "delivered" %}<span class="badge ok">delivered</span>
+      {% elif r.delivery == "failed" %}<span class="badge bad">failed</span>
+      {% elif r.delivery == "pending" %}<span class="badge warn">pending</span>
+      {% else %}—{% endif %}
+    </td>
+    <td><a href="/review/extraction/{{ r.extraction_id }}">JSON</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

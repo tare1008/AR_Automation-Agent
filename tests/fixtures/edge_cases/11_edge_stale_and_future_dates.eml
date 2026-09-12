@@ -1,0 +1,44 @@
+From: Legacy Traders <accounts@legacy-traders.example>
+To: AR Remittances <ar-remittances@acmemetals.example>
+Subject: Payment Advice - Invoice Settlement OLDINV2023-0087
+Date: Tue, 15 Sep 2026 00:00:00 -0000
+Message-ID: <280996191662@legacy-traders.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============8097522620170934080=="
+
+--===============8097522620170934080==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Dear Sir,
+We have remitted payment against the following invoice:
+
+Invoice No: OLDINV2023-0087
+Invoice Date: 05-Jan-2023
+Payment Date: 15-Sep-2027
+Amount Paid: INR 1,25,000.00
+UTR: PNBN52027091500098
+
+Regards,
+Legacy Traders Pvt Ltd
+
+--===============8097522620170934080==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+MIME-Version: 1.0
+
+<html><body><pre>Dear Sir,
+We have remitted payment against the following invoice:
+
+Invoice No: OLDINV2023-0087
+Invoice Date: 05-Jan-2023
+Payment Date: 15-Sep-2027
+Amount Paid: INR 1,25,000.00
+UTR: PNBN52027091500098
+
+Regards,
+Legacy Traders Pvt Ltd
+</pre></body></html>
+
+--===============8097522620170934080==--

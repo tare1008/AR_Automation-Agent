@@ -94,3 +94,45 @@ def test_payer_name_found_from_a_vendor_name_label():
 def test_payer_name_empty_when_no_label_present():
     out = _parse("Subject: hi\n\nplease see attached, no name label here")
     assert out.payments[0].payer_name == ""
+
+
+def test_currency_detected_from_an_explicit_code():
+    out = _parse("We have wired USD 45,000.00 via SWIFT against Invoice EXP-2026-0456.")
+    assert out.payments[0].currency == "USD"
+
+
+def test_currency_defaults_to_inr_when_no_foreign_code_present():
+    out = _parse("We have remitted Rs. 45,000.00 against Invoice INV-1.")
+    assert out.payments[0].currency == "INR"
+
+
+def test_reminder_language_with_no_payment_signal_is_not_a_remittance():
+    out = _parse(
+        "This is a gentle reminder that Invoice INV-2026-3381 for INR 3,42,500.00 "
+        "remains unpaid. Kindly process the payment at the earliest."
+    )
+    assert out.is_remittance is False
+    assert out.payments == []
+    assert "not-a-remittance" in out.notes.lower()
+
+
+def test_generic_polite_closing_does_not_misfire_as_a_reminder():
+    # "kindly process" / "please arrange" are common sign-offs in genuine
+    # remittance emails too (e.g. a cheque payment with no UTR to match on) —
+    # only a phrase that names the payment explicitly should flip this.
+    out = _parse(
+        "Please find enclosed our cheque payment of INR 12,500.00 against "
+        "Invoice INV-2026-501. Kindly process and please arrange an "
+        "acknowledgement at your convenience."
+    )
+    assert out.is_remittance is True
+    assert len(out.payments) == 1
+
+
+def test_reminder_language_with_a_bank_reference_still_counts_as_remitted():
+    # a reference or "payment done"-style phrase always wins over reminder wording
+    out = _parse(
+        "Kindly note this is overdue no more — we have remitted vide UTR STBK52026050100112233."
+    )
+    assert out.is_remittance is True
+    assert len(out.payments) == 1

@@ -124,6 +124,23 @@ def queue_page(
     )
 
 
+@router.get("/approved", response_class=HTMLResponse)
+def approved_page(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import list_approved
+
+    return _render(
+        request,
+        "approved.html",
+        user=user,
+        rows=list_approved(session),
+        flash=request.query_params.get("flash"),
+    )
+
+
 @router.get("/errors", response_class=HTMLResponse)
 def errors_page(
     request: Request,
