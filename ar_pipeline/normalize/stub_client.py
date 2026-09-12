@@ -65,10 +65,15 @@ _PAYMENT_DONE_RE = re.compile(
     re.I,
 )
 # language typical of a chase / reminder for a payment that has NOT happened
-# yet — only consulted when no payment-done signal was found.
+# yet — only consulted when no payment-done signal was found. Deliberately
+# narrow: a generic "kindly process" / "please arrange" is also how plenty
+# of genuine remittance emails sign off, so each alternative here names the
+# payment explicitly ("release/process THE PAYMENT", "payment is pending",
+# "remains unpaid") rather than matching on politeness alone.
 _REMINDER_RE = re.compile(
-    r"\b(overdue|reminder|kindly\s*(?:process|arrange|expedite)|"
-    r"please\s*(?:process|remit|arrange)|payment\s*(?:is\s*)?pending|"
+    r"\b(overdue|reminder|remains\s*unpaid|"
+    r"kindly\s*(?:release|process)\s*the\s*payment|"
+    r"payment\s*(?:is\s*)?(?:still\s*)?pending|"
     r"yet\s*to\s*(?:be\s*)?(?:pay|receive))\b",
     re.I,
 )
