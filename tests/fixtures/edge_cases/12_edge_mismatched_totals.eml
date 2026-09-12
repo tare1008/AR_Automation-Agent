@@ -1,0 +1,59 @@
+From: AR Team <ar@meridian-fasteners.example>
+To: AR Remittances <ar-remittances@acmemetals.example>
+Subject: FW: Remittance Advice with Covering Letter
+Date: Tue, 10 Jun 2025 00:00:00 -0000
+Message-ID: <842061857201@meridian-fasteners.example>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="===============7052855124277037438=="
+
+--===============7052855124277037438==
+Content-Type: multipart/alternative;
+ boundary="===============0929353769505235434=="
+
+--===============0929353769505235434==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Dear Team,
+Please find our remittance advice, with a signed covering letter attached. UT=
+R: ICIC52026061512345
+Regards,
+Meridian Fasteners Ltd
+
+--===============0929353769505235434==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body>
+<p>Dear Team,</p>
+<p>Please find our remittance advice below, with a signed covering letter att=
+ached.</p>
+<table border=3D"1">
+<tr><td>Invoice</td><td>Amount</td></tr>
+<tr><td>INV-3301</td><td style=3D'text-align:right'>120,000.00</td></tr>
+<tr><td>INV-3302</td><td style=3D'text-align:right'>95,500.00</td></tr>
+<tr><td>INV-3303</td><td style=3D'text-align:right'>60,000.00</td></tr>
+<tr><td>Total remitted</td><td style=3D'text-align:right'>250,000.00</td></tr>
+</table>
+<p>UTR: ICIC52026061512345</p>
+<p>Regards,<br>Meridian Fasteners Ltd</p>
+</body></html>
+
+--===============0929353769505235434==--
+
+--===============7052855124277037438==
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="Covering_Letter.docx"
+MIME-Version: 1.0
+
+UEsDBBQAAAAAABhoLF3muHRrYgAAAGIAAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbDw/eG1sIHZl
+cnNpb249IjEuMCI/PjxUeXBlcyB4bWxucz0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMu
+b3JnL3BhY2thZ2UvMjAwNi9jb250ZW50LXR5cGVzIi8+UEsDBBQAAAAAABhoLF3dWoYNDQAAAA0A
+AAARAAAAd29yZC9kb2N1bWVudC54bWw8dzpkb2N1bWVudC8+UEsBAhQDFAAAAAAAGGgsXea4dGti
+AAAAYgAAABMAAAAAAAAAAAAAAIABAAAAAFtDb250ZW50X1R5cGVzXS54bWxQSwECFAMUAAAAAAAY
+aCxd3VqGDQ0AAAANAAAAEQAAAAAAAAAAAAAAgAGTAAAAd29yZC9kb2N1bWVudC54bWxQSwUGAAAA
+AAIAAgCAAAAAzwAAAAAA
+
+--===============7052855124277037438==--

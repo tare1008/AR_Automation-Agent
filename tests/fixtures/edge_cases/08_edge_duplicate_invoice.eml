@@ -1,0 +1,40 @@
+From: AR Desk <ar@precision-tooling.example>
+To: AR Remittances <ar-remittances@acmemetals.example>
+Subject: Payment Advice - Invoice Batch 2026-05
+Date: Thu, 01 May 2025 00:00:00 -0000
+Message-ID: <655323977826@precision-tooling.example>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="===============5124059640891050649=="
+
+--===============5124059640891050649==
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Dear Team,
+We have remitted the payment vide UTR no. STBK52026050100112233 on 01.05.2026.
+Regards,
+Precision Tooling Works
+
+--===============5124059640891050649==
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+MIME-Version: 1.0
+
+<html><body>
+<p>Dear Team,</p>
+<p>We have remitted the payment vide UTR no. STBK52026050100112233 on 01.05.2=
+026.</p>
+<table border=3D"1">
+<tr><td>S.No</td><td>Invoice Number</td><td>Amount</td></tr>
+<tr><td>1</td><td>FCI2510009901</td><td style=3D'text-align:right'>234,500.00=
+</td></tr><tr><td>2</td><td>FCI2510009902</td><td style=3D'text-align:right'>=
+189,300.00</td></tr><tr><td>3</td><td>FCI2510009901</td><td style=3D'text-ali=
+gn:right'>234,500.00</td></tr>
+<tr><td></td><td>Total remitted</td><td style=3D'text-align:right'>658,300.00=
+</td></tr>
+</table>
+<p>Regards,<br>Precision Tooling Works</p>
+</body></html>
+
+--===============5124059640891050649==--
