@@ -29,6 +29,13 @@ def _embedded_pg():
     os.environ["REVIEW_AUTH_SECRET"] = "test-shared-secret"
     os.environ["REVIEW_SESSION_SECRET"] = "test-session-signing-key"
     os.environ["REVIEW_COOKIE_SECURE"] = "false"
+    # pin these to the real field defaults so a developer's local .env (e.g.
+    # LLM_PROVIDER=stub for their own demo) can't silently change what a
+    # test that relies on the default sees. Individual tests still
+    # monkeypatch.setenv + get_settings.cache_clear() to opt into a
+    # non-default value for the duration of that one test.
+    os.environ["LLM_PROVIDER"] = "anthropic"
+    os.environ["AUTO_APPROVE_MIN_CONFIDENCE"] = "0"
 
     from ar_pipeline.config import get_settings
     from ar_pipeline.db.base import reset_engine
