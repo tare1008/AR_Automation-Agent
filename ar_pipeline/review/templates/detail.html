@@ -15,7 +15,7 @@
 {% endmacro %}
 {% block title %}{{ view.email.subject }} — AR Review{% endblock %}
 {% block content %}
-<p><a href="/review">&larr; Back to queue</a></p>
+<p class="lede"><a href="/review">&larr; Back to queue</a></p>
 <h1>{{ view.email.subject }}</h1>
 <p class="meta">From {{ view.email.sender_address }} ·
    received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·
@@ -112,6 +112,7 @@
 
     {% if view.edits %}
     <h3>Edit history</h3>
+    <div class="table-wrap">
     <table>
       <thead><tr><th>When</th><th>Who</th><th>Field</th><th>Old</th><th>New</th></tr></thead>
       <tbody>
@@ -121,8 +122,8 @@
       {% endfor %}
       </tbody>
     </table>
+    </div>
     {% endif %}
   </section>
 </div>
 {% endblock %}
-{% block scripts %}<script src="/review/static/review.js"></script>{% endblock %}

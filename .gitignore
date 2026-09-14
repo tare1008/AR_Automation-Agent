@@ -7,6 +7,7 @@ htmlcov/
 *.egg-info/
 .env
 data/blob/
+data/stub_backend_store.json
 .pgdata/
 .superpowers/
 .worktrees/

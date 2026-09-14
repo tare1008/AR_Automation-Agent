@@ -2,9 +2,10 @@
 {% block title %}Approved — AR Review{% endblock %}
 {% block content %}
 <h1>Approved <small>({{ rows|length }}) — auto-approved and human-approved payments</small></h1>
-<p><a href="/review">← Full journey</a></p>
+<p class="lede"><a href="/review">&larr; Full journey</a></p>
 {% if not rows %}<p>Nothing approved yet.</p>{% endif %}
 {% if rows %}
+<div class="table-wrap">
 <table>
   <thead><tr>
     <th>Approved</th><th>By</th><th>From</th><th>Subject</th><th>Payment</th>
@@ -22,8 +23,8 @@
     <td>{{ r.subject }}</td>
     <td>#{{ r.payment_index }}</td>
     <td>{{ r.payer_name or "—" }}</td>
-    <td>{{ r.currency or "" }} {{ r.total_paid_amount if r.total_paid_amount is not none else "—" }}</td>
-    <td>{{ "%.2f"|format(r.confidence) if r.confidence is not none else "—" }}</td>
+    <td class="num">{{ r.currency or "" }} {{ r.total_paid_amount if r.total_paid_amount is not none else "—" }}</td>
+    <td class="num">{{ "%.2f"|format(r.confidence) if r.confidence is not none else "—" }}</td>
     <td>
       {% if r.delivery == "delivered" %}<span class="badge ok">delivered</span>
       {% elif r.delivery == "failed" %}<span class="badge bad">failed</span>
@@ -35,5 +36,6 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
 {% endblock %}

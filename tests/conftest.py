@@ -5,6 +5,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+# Must be set before anything imports stub_backend.store, which reads this
+# at module-import time to decide whether to persist to disk — an empty
+# string means "don't", so test runs never write into the working tree.
+os.environ["STUB_BACKEND_STORE_PATH"] = ""
+
 PGDATA = pathlib.Path(__file__).resolve().parent.parent / ".pgdata"
 
 

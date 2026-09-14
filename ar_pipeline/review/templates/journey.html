@@ -1,8 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Journey — AR Review{% endblock %}
 {% block content %}
-<h1>Processing journey <small>&mdash; received email &rarr; delivered JSON</small></h1>
-<p>Every email the mailbox received. Flag-free, high-confidence extractions are approved automatically and sent straight to the backend; the rest wait for a reviewer.</p>
+<h1>Processing journey <small>&mdash; received email &rarr; delivered JSON</small>
+  <button type="button" class="icon-btn" data-open-dialog="journeyInfo" aria-label="What is this page?" title="What is this page?">i</button>
+</h1>
+<p class="lede">Every email the mailbox received. Flag-free, high-confidence extractions are approved automatically and sent straight to the backend; the rest wait for a reviewer.</p>
 
 {% if not rows %}
 <p>No emails yet. Run <code>ar-pipeline ingest-eml &hellip;</code>.</p>
@@ -14,10 +16,13 @@
     {% if x.outcome == "awaiting review" %}{% set ns.awaiting = ns.awaiting + 1 %}{% endif %}
   {% endfor %}
 {% endfor %}
-<p class="counts">{{ rows|length }} email{{ "s" if rows|length != 1 else "" }}
-  &middot; {{ ns.auto }} auto-approved
-  &middot; {{ ns.awaiting }} awaiting review</p>
+<div class="stat-row">
+  <div class="stat-tile"><div class="n">{{ rows|length }}</div><div class="label">Email{{ "s" if rows|length != 1 else "" }} received</div></div>
+  <div class="stat-tile"><div class="n good">{{ ns.auto }}</div><div class="label">Auto-approved</div></div>
+  <div class="stat-tile"><div class="n warn">{{ ns.awaiting }}</div><div class="label">Awaiting review</div></div>
+</div>
 
+<div class="table-wrap">
 <table>
   <thead><tr>
     <th>Email received</th><th>Pipeline</th><th>Extractions</th>
@@ -59,7 +64,7 @@
             {% endif %}
             {% if x.flag_count %}<span class="badge warn">{{ x.flag_count }} flag{{ "s" if x.flag_count != 1 else "" }}</span>{% endif %}
           </td>
-          <td>{{ "%.2f"|format(x.confidence) if x.confidence is not none else "—" }}</td>
+          <td class="num">{{ "%.2f"|format(x.confidence) if x.confidence is not none else "—" }}</td>
           <td>
             {% if x.delivery == "delivered" %}<span class="badge ok">delivered</span>
             {% elif x.delivery == "failed" %}<span class="badge bad">failed</span>
@@ -77,5 +82,33 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
 {% endif %}
+
+<dialog id="journeyInfo">
+  <div class="dialog-body">
+    <h2>Reading the journey page</h2>
+    <p class="lede" style="margin-bottom:.5rem">This is the end-to-end trail for every email the mailbox has received, from arrival to a delivered (or waiting) JSON payload.</p>
+    <dl>
+      <dt>Pipeline</dt>
+      <dd>Where the email currently sits: Received &rarr; Classified &rarr; Extracted &rarr; Normalizing &rarr; Awaiting review / Complete, or Error if something failed outright.</dd>
+      <dt>Outcome — auto-approved</dt>
+      <dd>The model's extraction had no validation flags and cleared the confidence bar, so it was approved automatically and queued for delivery — no human touched it.</dd>
+      <dt>Outcome — approved</dt>
+      <dd>A reviewer checked the extraction (edited it or not) and approved it by hand.</dd>
+      <dt>Outcome — awaiting review</dt>
+      <dd>Sitting in the human queue: either it didn't clear the auto-approve bar, or it carries a validation flag worth a second look.</dd>
+      <dt>Outcome — not a remittance / rejected</dt>
+      <dd>The model decided the email isn't a payment notice, or a reviewer rejected it.</dd>
+      <dt>Confidence</dt>
+      <dd>The model's self-reported confidence in the extraction (0&ndash;1), one of the signals behind the auto-approve decision.</dd>
+      <dt>Delivery</dt>
+      <dd>Whether the approved payload has been POSTed to the backend yet — pending, delivered, or failed (with retries).</dd>
+    </dl>
+    <p class="lede" style="margin-top:.9rem">Need a filtered view instead? <a href="/review/queue">Queue</a> lists only what needs a human; <a href="/review/approved">Approved</a> lists everything that's gone through, auto or manual.</p>
+  </div>
+  <div class="dialog-foot">
+    <form method="dialog"><button type="submit">Got it</button></form>
+  </div>
+</dialog>
 {% endblock %}

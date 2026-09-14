@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ view.email.subject }} — JSON — AR Review{% endblock %}
 {% block content %}
-<p><a href="/review">&larr; Journey</a></p>
+<p class="lede"><a href="/review">&larr; Journey</a></p>
 <h1>{{ view.email.subject }}</h1>
 <p class="meta">From {{ view.email.sender_address }} ·
    received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·

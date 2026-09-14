@@ -21,6 +21,12 @@
     });
   }
   document.addEventListener("click", function (ev) {
+    var opener = ev.target.closest && ev.target.closest("[data-open-dialog]");
+    if (opener) {
+      var dlg = document.getElementById(opener.dataset.openDialog);
+      if (dlg && dlg.showModal) dlg.showModal();
+      return;
+    }
     var t = ev.target;
     if (t.id === "addline") {
       var tmpl = document.querySelector("#lineitems .lineitem");

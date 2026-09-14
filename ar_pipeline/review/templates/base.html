@@ -8,22 +8,29 @@
 </head>
 <body>
   <header class="topbar">
-    <a href="/review" class="brand">AR Review</a>
-    <nav>
-      <a href="/review">Journey</a>
-      <a href="/review/queue">Queue</a>
-      <a href="/review/approved">Approved</a>
-      <a href="/review/errors">Errors</a>
-      {% if user %}
-        <span class="who">{{ user.name }}</span>
-        <form method="post" action="/review/logout" class="inline">
-          <button type="submit" class="linkbtn">Log out</button>
-        </form>
-      {% endif %}
+    <a href="/review" class="brand">
+      <span class="brand-mark">AR</span>
+      <span class="brand-word">AR Review</span>
+    </a>
+    {% if user %}
+    {% set path = request.url.path %}
+    <nav class="topnav">
+      <a href="/review" class="{{ 'active' if path == '/review' else '' }}">Journey</a>
+      <a href="/review/queue" class="{{ 'active' if path == '/review/queue' else '' }}">Queue</a>
+      <a href="/review/approved" class="{{ 'active' if path == '/review/approved' else '' }}">Approved</a>
+      <a href="/review/errors" class="{{ 'active' if path == '/review/errors' else '' }}">Errors</a>
     </nav>
+    <span class="topbar-right">
+      <span class="who">Signed in as <strong>{{ user.name }}</strong></span>
+      <form method="post" action="/review/logout" class="inline">
+        <button type="submit" class="linkbtn">Log out</button>
+      </form>
+    </span>
+    {% endif %}
   </header>
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
   <main>{% block content %}{% endblock %}</main>
+  <script src="/review/static/review.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
