@@ -10,7 +10,7 @@ from urllib.parse import quote
 import httpx
 
 from ar_pipeline.config import get_settings
-from ar_pipeline.ingest.auth import GraphAuth
+from ar_pipeline.ingest.auth import DelegatedGraphAuth, GraphAuth, build_graph_auth
 from ar_pipeline.ingest.types import DeltaResult, GraphAttachment, GraphMessage
 
 log = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class HttpGraphClient:
 
     def __init__(
         self,
-        auth: GraphAuth,
+        auth: GraphAuth | DelegatedGraphAuth,
         mailbox: str,
         *,
         http: httpx.Client | None = None,
@@ -53,12 +53,18 @@ class HttpGraphClient:
     ) -> None:
         self._auth = auth
         self._mailbox = mailbox
+        # A delegated (device-code) token is only ever valid for /me — a
+        # personal Microsoft account has no concept of one signed-in user
+        # addressing another mailbox by name, unlike an app-only token.
+        self._base_path = (
+            "/me" if isinstance(auth, DelegatedGraphAuth) else f"/users/{quote(mailbox, safe='@')}"
+        )
         self._http = http or httpx.Client(base_url=_GRAPH_BASE_URL, timeout=30)
         self._max_attempts = max_attempts
 
     @classmethod
     def from_settings(cls) -> HttpGraphClient:
-        return cls(GraphAuth.from_settings(), get_settings().shared_mailbox)
+        return cls(build_graph_auth(), get_settings().shared_mailbox)
 
     def close(self) -> None:
         self._http.close()
@@ -100,8 +106,7 @@ class HttpGraphClient:
 
     def fetch_delta(self, delta_link: str | None) -> DeltaResult:
         if delta_link is None:
-            mailbox = quote(self._mailbox, safe="@")
-            url = f"/users/{mailbox}/mailFolders/inbox/messages/delta?$select={_DELTA_SELECT}"
+            url = f"{self._base_path}/mailFolders/inbox/messages/delta?$select={_DELTA_SELECT}"
         else:
             url = delta_link
 
@@ -158,9 +163,8 @@ class HttpGraphClient:
         )
 
     def download_attachments(self, message_id: str) -> list[GraphAttachment]:
-        mailbox = quote(self._mailbox, safe="@")
         message = quote(message_id, safe="")
-        url = f"/users/{mailbox}/messages/{message}/attachments"
+        url = f"{self._base_path}/messages/{message}/attachments"
         attachments: list[GraphAttachment] = []
         while True:
             payload = self._get(url)

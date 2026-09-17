@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Queue — AR Review{% endblock %}
+{% block title %}Queue — AR Review by MLDeep Systems{% endblock %}
 {% block content %}
 <h1>Review queue <small>— extractions that need a human</small></h1>
 <p class="lede"><a href="/review">&larr; Full journey</a></p>
@@ -15,8 +15,8 @@
   {% for r in rows %}
   <tr>
     <td>{{ r.received_at.strftime("%Y-%m-%d %H:%M") }}</td>
-    <td>{{ r.sender_address }}</td>
-    <td>{{ r.subject }}</td>
+    <td class="truncate" title="{{ r.sender_address }}">{{ r.sender_address }}</td>
+    <td class="truncate" title="{{ r.subject }}">{{ r.subject }}</td>
     <td>#{{ r.payment_index }}
       {% if not r.is_remittance %}<span class="badge bad">not a remittance</span>{% endif %}
     </td>

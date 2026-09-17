@@ -1,26 +1,32 @@
 {% extends "base.html" %}
 {% macro deduction_row(scope, idx, d) %}
 <span class="dedrow">
-  <select name="{{ scope }}.deductions[{{ idx }}].type">
+  <select name="{{ scope }}.deductions[{{ idx }}].type" aria-label="Deduction type">
     {% for t in ["tds","credit_note","advance_adjustment","discount","rounding","other"] %}
     <option value="{{ t }}"{% if d and d.get("type")==t %} selected{% endif %}>{{ t }}</option>
     {% endfor %}
   </select>
-  <input type="text" name="{{ scope }}.deductions[{{ idx }}].amount"
+  <input type="text" name="{{ scope }}.deductions[{{ idx }}].amount" aria-label="Deduction amount"
          placeholder="amount" value="{{ d.get('amount') if d and d.get('amount') is not none else '' }}">
-  <input type="text" name="{{ scope }}.deductions[{{ idx }}].reason"
+  <input type="text" name="{{ scope }}.deductions[{{ idx }}].reason" aria-label="Deduction reason"
          placeholder="reason" value="{{ d.get('reason') if d and d.get('reason') is not none else '' }}">
-  <button type="button" class="removededuction">×</button>
+  <button type="button" class="removededuction" aria-label="Remove this deduction">&times;</button>
 </span>
 {% endmacro %}
-{% block title %}{{ view.email.subject }} — AR Review{% endblock %}
+{% block title %}{{ view.email.subject }} — AR Review by MLDeep Systems{% endblock %}
 {% block content %}
 <p class="lede"><a href="/review">&larr; Back to queue</a></p>
 <h1>{{ view.email.subject }}</h1>
 <p class="meta">From {{ view.email.sender_address }} ·
    received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·
-   confidence {{ "%.2f"|format(view.extraction.confidence) if view.extraction.confidence is not none else "—" }}</p>
-{% for f in view.extraction.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}
+   confidence {{ "%.2f"|format(view.extraction.confidence) if view.extraction.confidence is not none else "—" }}
+   {% if auto_approve_threshold %}
+   <span class="badge">auto-approve bar: {{ "%.2f"|format(auto_approve_threshold) }}</span>
+   {% endif %}
+</p>
+{% if view.extraction.validation_flags %}
+<p role="alert">{% for f in view.extraction.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>
+{% endif %}
 {% if not view.extraction.is_remittance %}<span class="badge bad">LLM: not a remittance</span>{% endif %}
 
 <div class="detail">
@@ -51,10 +57,15 @@
   </section>
 
   <section class="pane">
-    <h2>Canonical</h2>
+    <h2>Canonical
+      <button type="button" class="icon-btn" data-open-dialog="deductionGlossary"
+              aria-label="What do the deduction types mean?" title="What do the deduction types mean?">i</button>
+    </h2>
     <form method="post" action="/review/{{ view.extraction.id }}/edit" id="editform">
-      <fieldset>
+      {% set header_flags = flag_groups|selectattr("scope", "equalto", "header")|list %}
+      <fieldset{% if header_flags %} class="flagged"{% endif %}>
         <legend>Header</legend>
+        {% for hf in header_flags %}<p class="field-flag">{{ hf.text }}</p>{% endfor %}
         {% set h = canonical.get("header", {} ) %}
         {% for f in ["payer_name","payer_id","payment_reference","payment_reference_type",
                      "payment_date","payment_method","currency","total_paid_amount"] %}
@@ -74,8 +85,10 @@
       <div id="lineitems">
       {% for li in canonical.get("line_items") or [] %}
         {% set li_idx = loop.index0 %}
-        <fieldset class="lineitem" data-index="{{ li_idx }}">
+        {% set this_line_flags = flag_groups|selectattr("scope", "equalto", "line:" ~ li_idx)|list %}
+        <fieldset class="lineitem{% if this_line_flags %} flagged{% endif %}" data-index="{{ li_idx }}">
           <legend>Line {{ li_idx }}</legend>
+          {% for lf in this_line_flags %}<p class="field-flag">{{ lf.text }}</p>{% endfor %}
           {% for f in ["invoice_number","invoice_date","invoice_amount","amount_paid"] %}
           <label>{{ f }}
             <input type="text" name="line_items[{{ li_idx }}].{{ f }}"
@@ -98,17 +111,17 @@
 
       <div class="rowactions">
         <button type="submit" name="approve" value="0">Save</button>
-        <button type="submit" name="approve" value="1">Save &amp; Approve</button>
+        <button type="submit" name="approve" value="1" class="btn-approve">Save &amp; Approve</button>
       </div>
+      <p class="lede" style="margin-top:.4rem">Save &amp; Approve sends this payload to the backend immediately.</p>
     </form>
 
     <form method="post" action="/review/{{ view.extraction.id }}/reject" class="stack">
       <label>Reject reason <input type="text" name="reason" required></label>
-      <button type="submit">Reject</button>
+      <button type="submit" class="btn-danger">Reject</button>
     </form>
-    <form method="post" action="/review/{{ view.extraction.id }}/reprocess">
-      <button type="submit">Reprocess (re-run extraction)</button>
-    </form>
+
+    <button type="button" class="btn-quiet" data-open-dialog="reprocessConfirm">Reprocess (re-run extraction)</button>
 
     {% if view.edits %}
     <h3>Edit history</h3>
@@ -126,4 +139,35 @@
     {% endif %}
   </section>
 </div>
+
+<dialog id="reprocessConfirm">
+  <div class="dialog-body">
+    <h2>Reprocess this email?</h2>
+    <p class="lede">This re-runs extraction from scratch and discards any unsaved edits on this
+      screen. If you've changed anything above, save first — reprocessing will not merge with it.</p>
+  </div>
+  <div class="dialog-foot">
+    <form method="dialog"><button type="submit" class="btn-quiet">Cancel</button></form>
+    <form method="post" action="/review/{{ view.extraction.id }}/reprocess">
+      <button type="submit" class="btn-danger">Reprocess anyway</button>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="deductionGlossary">
+  <div class="dialog-body">
+    <h2>Deduction types</h2>
+    <dl>
+      <dt>tds</dt><dd>Tax deducted at source by the payer before remitting.</dd>
+      <dt>credit_note</dt><dd>A credit note issued against this invoice, offset from the payment.</dd>
+      <dt>advance_adjustment</dt><dd>An earlier advance payment applied against this invoice.</dd>
+      <dt>discount</dt><dd>An early-payment or negotiated discount taken by the payer.</dd>
+      <dt>rounding</dt><dd>A small rounding difference between invoiced and paid amounts.</dd>
+      <dt>other</dt><dd>Anything that doesn't fit the categories above — use the reason field.</dd>
+    </dl>
+  </div>
+  <div class="dialog-foot">
+    <form method="dialog"><button type="submit">Got it</button></form>
+  </div>
+</dialog>
 {% endblock %}

@@ -1,5 +1,6 @@
 import html
 import json
+import os
 import pathlib
 
 from fastapi import FastAPI, Header, Response
@@ -10,6 +11,9 @@ from ar_pipeline.schema.canonical import RemittancePayload
 from stub_backend.store import RECEIVED, lookup_idempotency, received_list, record
 
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
+# The review app runs as a separate process/port; point back to it for the
+# nav link. Override with REVIEW_APP_URL if it's not on the usual dev port.
+_REVIEW_APP_URL = os.environ.get("REVIEW_APP_URL", "http://127.0.0.1:8000/review")
 
 app = FastAPI(title="AR stub backend")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -28,9 +32,9 @@ def _row_html(payload: dict) -> str:
     raw_json = html.escape(json.dumps(payload, indent=2))
     return (
         f"<tr><td class='id' title='{extraction_id}'>{extraction_id[:8]}&hellip;</td>"
-        f"<td>{payer_name}</td>"
+        f"<td class='truncate' title='{payer_name}'>{payer_name}</td>"
         f"<td class='num'>{currency} {total_paid_amount}</td>"
-        f"<td class='ref'>{payment_reference}</td>"
+        f"<td class='ref truncate' title='{payment_reference}'>{payment_reference}</td>"
         f"<td class='num'>{line_item_count}</td>"
         f"<td><details><summary>View JSON</summary>"
         f"<pre>{raw_json}</pre></details></td></tr>"
@@ -64,17 +68,21 @@ def index() -> str:
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-        "<title>AR stub backend</title>"
+        "<title>AR Backend by MLDeep Systems</title>"
         "<link rel='stylesheet' href='/static/backend.css'>"
         "</head><body>"
-        "<header><span class='mark'>B</span><div>"
-        "<h1>AR stub backend</h1>"
-        "<p>Stand-in for the client's real system &mdash; every delivered "
-        "remittance lands here.</p>"
-        "</div></header>"
-        f"<main>{_LEDE}"
+        "<header>"
+        f"<nav class='topnav'><a href='{_REVIEW_APP_URL}'>Review app</a></nav>"
+        "<div class='brand-text'>"
+        "<span class='brand-word'>AR Backend</span>"
+        "<span class='brand-by'>by MLDeep Systems</span>"
+        "</div>"
+        "</header>"
+        "<main>"
+        f"<div class='masthead-row'>{_LEDE}"
         f"<div class='stat'><span class='n'>{len(rows)}</span>"
         "<span class='label'>Received</span></div>"
+        "</div>"
         f"{body}"
         "</main></body></html>"
     )

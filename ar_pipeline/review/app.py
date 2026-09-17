@@ -107,6 +107,44 @@ def journey_page(
     )
 
 
+@router.post("/poll-now")
+def poll_now_action(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Run one full cycle synchronously — poll the mailbox, advance the
+    pipeline, attempt deliveries — instead of waiting on the scheduler's
+    interval. For a demo with a handful of emails this finishes in seconds;
+    it's the same work `ar-pipeline tick` does, plus the mailbox poll."""
+    from ar_pipeline.config import get_settings
+    from ar_pipeline.deliver import backend_client, deliverer
+    from ar_pipeline.extract.vision import get_vision_extractor
+    from ar_pipeline.ingest.service import run_poll
+    from ar_pipeline.normalize.llm_client import get_llm_client
+    from ar_pipeline.pipeline.advance import advance_once
+    from ar_pipeline.storage import get_blob_store
+
+    poll_stats = run_poll()
+    if poll_stats is not None:
+        parts = [f"poll: {poll_stats.new_emails} new"]
+    else:
+        parts = ["poll: not configured"]
+
+    adv = advance_once(session, get_blob_store(), get_vision_extractor(), get_llm_client())
+    parts.append(
+        f"advance: {adv.classified} classified, {adv.extracted} extracted, "
+        f"{adv.normalized} normalized, {adv.errored} errored"
+    )
+
+    if get_settings().backend_url:
+        dlv = deliverer.run_deliveries(session, backend_client.get_backend_client())
+        parts.append(f"deliver: {dlv.delivered} delivered, {dlv.failed} failed")
+
+    flash = "Ran now — " + " · ".join(parts)
+    return RedirectResponse(f"/review?flash={quote(flash)}", status_code=303)
+
+
 @router.get("/queue", response_class=HTMLResponse)
 def queue_page(
     request: Request,
@@ -132,11 +170,16 @@ def approved_page(
 ) -> Response:
     from ar_pipeline.review.service import list_approved
 
+    rows = list_approved(session)
+    by = request.query_params.get("by")
+    if by == "auto":
+        rows = [r for r in rows if r.reviewed_by == AUTO_REVIEWER]
     return _render(
         request,
         "approved.html",
         user=user,
-        rows=list_approved(session),
+        rows=rows,
+        by=by,
         flash=request.query_params.get("flash"),
     )
 
@@ -212,6 +255,26 @@ def extraction_view_page(
     return _render(request, "extraction.html", user=user, view=view)
 
 
+@router.get("/email/{email_id}", response_class=HTMLResponse)
+def email_view_page(
+    request: Request,
+    email_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    import nh3
+
+    from ar_pipeline.review.service import ReviewError, load_email_view
+
+    try:
+        view = load_email_view(session, email_id)
+    except ReviewError:
+        raise HTTPException(status_code=404, detail="not found") from None
+
+    body_html = nh3.clean(view.email.body_html) if view.email.body_html else ""
+    return _render(request, "email.html", user=user, view=view, safe_body_html=body_html)
+
+
 @router.post("/{extraction_id}/edit")
 async def edit_action(
     request: Request,
@@ -275,7 +338,7 @@ def detail_page(
 ) -> Response:
     import nh3
 
-    from ar_pipeline.review.service import ReviewError, load_detail
+    from ar_pipeline.review.service import ReviewError, classify_flags, load_detail
 
     try:
         view = load_detail(session, extraction_id)
@@ -291,6 +354,8 @@ def detail_page(
         canonical=view.extraction.canonical or {},
         safe_body_html=body_html,
         flash=request.query_params.get("flash"),
+        auto_approve_threshold=get_settings().auto_approve_min_confidence,
+        flag_groups=classify_flags(view.extraction.validation_flags or []),
     )
 
 

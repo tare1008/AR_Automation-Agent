@@ -1,29 +1,41 @@
 :root {
-  --bg: #f3f5f8;
-  --surface: #ffffff;
-  --surface-muted: #eef1f6;
-  --border: #dde3ec;
-  --border-strong: #c2cbd9;
-  --text: #1a2233;
-  --text-muted: #5b6577;
-  --text-faint: #8b95a6;
+  /* Warm-neutral palette in the register of mldeep.io: cream paper, ink
+     text, a single confident burnt-orange brand accent, and a muted green
+     reserved for "approved/positive" so it never competes with the brand. */
+  --bg: #faf8f4;
+  --surface: #fffcf8;
+  --surface-muted: #f4eee6;
+  --border: #e6dfd2;
+  --border-strong: #cbc2b3;
+  --text: #211d17;
+  --text-muted: #655e54;
+  --text-faint: #7d7364;
 
-  --brand: #21456d;
-  --brand-strong: #163251;
-  --brand-soft: #e7edf6;
-  --accent: #1f6f5c;
-  --accent-soft: #e1f1ec;
+  --brand: #7f3f00;
+  --brand-strong: #5c2e00;
+  --brand-soft: #fbe9d9;
+  /* solid fills behind white text need their own token: --brand/-strong stay
+     tuned for text-on-background legibility (light in dark mode), which is
+     too light to pass 4.5:1 under white button text once inverted. */
+  --brand-fill: #994b00;
+  --brand-fill-hover: #7f3f00;
+  --accent: #2f6b4f;
+  --accent-soft: #e3efe8;
+  --accent-fill: #2f6b4f;
+  --accent-fill-hover: #1f5138;
 
-  --good: #157a44;
-  --good-bg: #e1f4e8;
-  --warn: #93590a;
-  --warn-bg: #fbecd3;
-  --bad: #ae2a21;
-  --bad-bg: #fbe3e1;
+  --good: #1f6f45;
+  --good-bg: #e6f2ea;
+  --warn: #7a5e00;
+  --warn-bg: #faf1d6;
+  --bad: #a63b26;
+  --bad-bg: #fbe6e1;
+  --bad-fill: #a63b26;
+  --bad-fill-hover: #832d1c;
 
-  --focus: #3d72ad;
-  --shadow-sm: 0 1px 2px rgba(20, 30, 50, .06);
-  --shadow-md: 0 4px 16px rgba(20, 30, 50, .08);
+  --focus: #994b00;
+  --shadow-sm: 0 1px 2px rgba(40, 30, 15, .07);
+  --shadow-md: 0 4px 16px rgba(40, 30, 15, .1);
   --radius: 10px;
   --radius-sm: 6px;
 
@@ -33,29 +45,35 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #10151d;
-    --surface: #171e29;
-    --surface-muted: #1c2430;
-    --border: #2a3441;
-    --border-strong: #3a4759;
-    --text: #e7ebf1;
-    --text-muted: #a2adc0;
-    --text-faint: #6d7789;
+    --bg: #17140f;
+    --surface: #211d17;
+    --surface-muted: #2d2922;
+    --border: #3a352c;
+    --border-strong: #4a463d;
+    --text: #f4eee6;
+    --text-muted: #c9bea9;
+    --text-faint: #8a8071;
 
-    --brand: #6a9bd1;
-    --brand-strong: #8db3e0;
-    --brand-soft: #1d2c40;
-    --accent: #4fb89b;
-    --accent-soft: #163229;
+    --brand: #f0a35a;
+    --brand-strong: #f6ad62;
+    --brand-soft: #3a2712;
+    --brand-fill: #8a4d10;
+    --brand-fill-hover: #7a430d;
+    --accent: #7dc4a1;
+    --accent-soft: #16281f;
+    --accent-fill: #245740;
+    --accent-fill-hover: #1c4433;
 
-    --good: #52c789;
-    --good-bg: #123524;
-    --warn: #e2ab52;
-    --warn-bg: #3a2c10;
-    --bad: #ef7b73;
-    --bad-bg: #3a1a18;
+    --good: #7dc4a1;
+    --good-bg: #14261d;
+    --warn: #d9a441;
+    --warn-bg: #362a0c;
+    --bad: #e2685a;
+    --bad-bg: #341510;
+    --bad-fill: #7a2419;
+    --bad-fill-hover: #5f1c12;
 
-    --focus: #8db3e0;
+    --focus: #f0a35a;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
     --shadow-md: 0 4px 16px rgba(0, 0, 0, .4);
   }
@@ -81,6 +99,11 @@ h2 { font-size: 1.1rem; margin: 1.5rem 0 .6rem; }
 h3 { font-size: .95rem; margin: 1rem 0 .4rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
 
 .lede { color: var(--text-muted); max-width: 62ch; margin: 0 0 1rem; }
+/* A lede paragraph paired with a companion control (a "run now" button, a
+   count) sits on one line, control on the right, instead of stacking. */
+.masthead-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.masthead-row .lede { margin: 0; }
+.masthead-row form { flex: 0 0 auto; }
 
 /* topbar */
 .topbar {
@@ -92,9 +115,11 @@ h3 { font-size: .95rem; margin: 1rem 0 .4rem; color: var(--text-muted); text-tra
 .brand { display: flex; align-items: center; gap: .55rem; text-decoration: none; color: var(--text); }
 .brand-mark {
   display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 8px;
-  background: var(--brand); color: #fff; font-weight: 700; font-size: .75rem; letter-spacing: .01em;
+  background: var(--brand-fill); color: #fff; font-weight: 700; font-size: .75rem; letter-spacing: .01em;
 }
+.brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-word { font-weight: 700; font-size: 1rem; }
+.brand-by { font-size: .7rem; color: var(--text-muted); font-weight: 500; letter-spacing: .01em; }
 .topnav { display: flex; align-items: center; gap: .25rem; flex-wrap: wrap; }
 .topnav a {
   text-decoration: none; color: var(--text-muted); font-weight: 600; font-size: .85rem;
@@ -121,15 +146,31 @@ main { padding: 1.25rem 1.5rem 3rem; max-width: 1180px; margin: 0 auto; }
 button, .btn {
   font: inherit; cursor: pointer; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--text); padding: .45rem .85rem; font-weight: 600; font-size: .85rem;
+  text-align: center; display: inline-flex; align-items: center; justify-content: center; gap: .35rem;
 }
 button:hover, .btn:hover { background: var(--surface-muted); }
 button:focus-visible, .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
   outline: 2px solid var(--focus); outline-offset: 2px;
 }
 button[type="submit"], .btn-primary {
-  background: var(--brand); border-color: var(--brand); color: #fff;
+  background: var(--brand-fill); border-color: var(--brand-fill); color: #fff;
 }
-button[type="submit"]:hover, .btn-primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); }
+button[type="submit"]:hover, .btn-primary:hover {
+  background: var(--brand-fill-hover); border-color: var(--brand-fill-hover);
+}
+/* Ships data to the backend — kept visually distinct from a routine Save. */
+.btn-approve {
+  background: var(--accent-fill); border-color: var(--accent-fill); color: #fff;
+}
+.btn-approve:hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
+/* Terminal and typed-reason-gated — kept visually distinct from routine actions. */
+.btn-danger {
+  background: var(--bad-fill); border-color: var(--bad-fill); color: #fff;
+}
+.btn-danger:hover { background: var(--bad-fill-hover); border-color: var(--bad-fill-hover); }
+.btn-quiet {
+  background: var(--surface); border-color: var(--border-strong); color: var(--text-muted);
+}
 .linkbtn { background: none; border: 0; color: var(--brand); cursor: pointer; padding: 0; font-weight: 600; }
 .linkbtn:hover { color: var(--brand-strong); background: none; text-decoration: underline; }
 .icon-btn {
@@ -150,24 +191,53 @@ input[type="text"], input[type="password"], select {
 }
 label { font-size: .85rem; }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); margin: .75rem 0; padding: .75rem 1rem 1rem; }
+fieldset.flagged { border: 1.5px solid var(--warn); }
 legend { font-weight: 700; font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); padding: 0 .3rem; }
 fieldset label { display: grid; gap: .25rem; margin-bottom: .6rem; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .02em; color: var(--text-muted); }
 fieldset input[type="text"] { font-weight: 400; text-transform: none; letter-spacing: normal; font-size: .95rem; color: var(--text); }
+.field-flag {
+  margin: 0 0 .6rem; padding: .3rem .6rem; background: var(--warn-bg); color: var(--warn);
+  border-radius: var(--radius-sm); font-size: .8rem; font-weight: 600;
+}
 
 /* tables */
 .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); box-shadow: var(--shadow-sm); }
 table { border-collapse: collapse; width: 100%; }
-th, td { padding: .55rem .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+/* A full grid — every row and column ruled, not just row separators — so a
+   dense table of short facts reads as a table, not a list with gaps. */
+th, td { padding: .55rem .75rem; text-align: left; vertical-align: top; border: 1px solid var(--border); }
 thead th {
   background: var(--surface-muted); color: var(--text-muted); font-size: .72rem; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border-strong);
+  text-transform: uppercase; letter-spacing: .04em; border-color: var(--border-strong);
 }
 tbody tr:hover { background: var(--surface-muted); }
-tbody tr:last-child td { border-bottom: 0; }
-table.subtable { width: auto; min-width: 100%; margin: 0; border: 0; }
-table.subtable th, table.subtable td { border-bottom: 1px solid var(--border); }
+table.subtable { width: auto; min-width: 100%; margin: 0; }
+table.subtable th, table.subtable td { border: 1px solid var(--border); }
 .table-wrap table.subtable { box-shadow: none; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Each extraction is one row of short, single-purpose facts — keep every
+   cell on one line and centered so the row reads as a scannable strip
+   rather than wrapping into ragged, left-hung fragments. */
+.subtable-centered th, .subtable-centered td { text-align: center; white-space: nowrap; }
+
+/* A cell that carries a primary label plus secondary meta (a timestamp, a
+   sender address, a count) stacks as two typographic weights instead of
+   raw <br>-separated lines of equal weight. */
+.cell-stack { display: flex; flex-direction: column; gap: .2rem; }
+.cell-stack .primary { color: var(--text); font-weight: 600; }
+.cell-stack .secondary { color: var(--text-muted); font-size: .8rem; }
+/* A cell-stack that is itself the clickable target (e.g. "open this
+   email") stays styled like plain cell content, not an underlined link —
+   the row hover and a subtle primary-line color shift are the affordance. */
+a.cell-stack { text-decoration: none; }
+a.cell-stack:hover .primary { color: var(--brand); text-decoration: underline; }
+/* A single-purpose cell (subject, sender, payer) that could run long stays
+   on one clean line with an ellipsis rather than wrapping raggedly inside
+   a table row; the full value is still available via the title attribute. */
+.truncate {
+  max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cell-stack .truncate { max-width: 34ch; }
 
 .counts { color: var(--text-muted); margin: .25rem 0 1rem; font-size: .9rem; }
 
@@ -176,7 +246,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .stat-tile {
   flex: 1 1 8rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: .7rem .9rem; box-shadow: var(--shadow-sm);
+  display: block; text-decoration: none; color: inherit; transition: border-color .1s, box-shadow .1s;
 }
+a.stat-tile:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 .stat-tile .n { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .stat-tile .n.good { color: var(--good); }
 .stat-tile .n.warn { color: var(--warn); }
@@ -219,7 +291,7 @@ dialog::backdrop { background: rgba(15, 20, 30, .45); }
 .dialog-body h2 { margin-top: 0; }
 .dialog-body dt { font-weight: 700; margin-top: .75rem; font-size: .85rem; }
 .dialog-body dd { margin: .15rem 0 0; color: var(--text-muted); font-size: .88rem; }
-.dialog-foot { display: flex; justify-content: flex-end; padding: .9rem 1.6rem; border-top: 1px solid var(--border); }
+.dialog-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .9rem 1.6rem; border-top: 1px solid var(--border); }
 h1 .icon-btn { vertical-align: middle; margin-left: .4rem; }
 
 @media (max-width: 900px) {

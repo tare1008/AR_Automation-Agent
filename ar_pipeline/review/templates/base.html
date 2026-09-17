@@ -3,14 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}AR Review{% endblock %}</title>
+  <title>{% block title %}AR Review by MLDeep Systems{% endblock %}</title>
   <link rel="stylesheet" href="/review/static/review.css">
 </head>
 <body>
   <header class="topbar">
     <a href="/review" class="brand">
       <span class="brand-mark">AR</span>
-      <span class="brand-word">AR Review</span>
+      <span class="brand-text">
+        <span class="brand-word">AR Review</span>
+        <span class="brand-by">by MLDeep Systems</span>
+      </span>
     </a>
     {% if user %}
     {% set path = request.url.path %}

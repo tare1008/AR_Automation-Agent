@@ -8,6 +8,8 @@ htmlcov/
 .env
 data/blob/
 data/stub_backend_store.json
+data/graph_token_cache.json
+data/gmail_token_cache.json
 .pgdata/
 .superpowers/
 .worktrees/

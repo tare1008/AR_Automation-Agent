@@ -5,6 +5,7 @@ never commits — the request-scoped ``get_db`` dependency owns the transaction.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -123,6 +124,57 @@ def load_extraction_view(session: Session, extraction_id: uuid.UUID) -> Extracti
         outcome=_extraction_outcome(ext),
         delivery=delivery or "—",
         canonical_json=json.dumps(ext.canonical, indent=2, sort_keys=False, default=str),
+    )
+
+
+@dataclass(frozen=True)
+class EmailExtractionSummary:
+    id: uuid.UUID
+    payment_index: int
+    outcome: str
+    delivery: str
+
+
+@dataclass(frozen=True)
+class EmailView:
+    email: Email
+    attachments: list[Attachment]
+    stage: str
+    extractions: list[EmailExtractionSummary]
+
+
+def load_email_view(session: Session, email_id: uuid.UUID) -> EmailView:
+    """The raw email plus a summary of what happened to it — independent of
+    any one extraction, so it also works for emails with zero extractions
+    (errored, or not yet processed)."""
+    email = session.get(Email, email_id)
+    if email is None:
+        raise ReviewError("email not found")
+    attachments = list(session.scalars(select(Attachment).where(Attachment.email_id == email.id)))
+    delivery_status_by_extraction: dict[uuid.UUID, str] = {}
+    for extraction_id, status in session.execute(select(Delivery.extraction_id, Delivery.status)):
+        delivery_status_by_extraction[extraction_id] = status
+    extractions: list[EmailExtractionSummary] = []
+    for ext in session.scalars(
+        select(Extraction)
+        .where(Extraction.email_id == email.id)
+        .order_by(Extraction.created_at.asc())
+    ):
+        env = ext.canonical.get("envelope") if isinstance(ext.canonical, dict) else None
+        idx = env.get("payment_index", 0) if isinstance(env, dict) else 0
+        extractions.append(
+            EmailExtractionSummary(
+                id=ext.id,
+                payment_index=int(idx) if isinstance(idx, int) else 0,
+                outcome=_extraction_outcome(ext),
+                delivery=delivery_status_by_extraction.get(ext.id, "—"),
+            )
+        )
+    return EmailView(
+        email=email,
+        attachments=attachments,
+        stage=_STAGE_LABELS.get(email.status, email.status),
+        extractions=extractions,
     )
 
 
@@ -280,6 +332,31 @@ def load_detail(session: Session, extraction_id: uuid.UUID) -> DetailView:
         )
     )
     return DetailView(ext, email, attachments, [dict(r) for r in raws], edits)
+
+
+_HEADER_FLAG_RE = re.compile(r"^header:\s*(.+)$", re.I)
+_LINE_FLAG_RE = re.compile(r"^line\s+(\d+):\s*(.+)$", re.I)
+
+
+def classify_flags(flags: list[str]) -> list[dict[str, str | None]]:
+    """Tag each validation flag with the fieldset it should be pinned to.
+
+    Flags are free-form strings from ``normalize.validators`` (not a
+    structured field path), so this only recognizes the "header: ..." and
+    "line N: ..." prefixes those checks already use; everything else is
+    left unscoped and still shown in the flat summary list.
+    """
+    out: list[dict[str, str | None]] = []
+    for flag in flags:
+        line_match = _LINE_FLAG_RE.match(flag)
+        if line_match:
+            out.append({"scope": f"line:{line_match.group(1)}", "text": flag})
+            continue
+        if _HEADER_FLAG_RE.match(flag):
+            out.append({"scope": "header", "text": flag})
+            continue
+        out.append({"scope": None, "text": flag})
+    return out
 
 
 def _require_pending(ext: Extraction | None) -> Extraction:

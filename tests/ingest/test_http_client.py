@@ -1,8 +1,10 @@
 import base64
+from unittest.mock import patch
 
 import httpx
 import pytest
 
+from ar_pipeline.ingest.auth import DelegatedGraphAuth
 from ar_pipeline.ingest.client import (
     DeltaExpired,
     GraphProtocolError,
@@ -55,6 +57,32 @@ def test_client_close_and_context_manager_close_http():
     with client as c:
         assert c is client
     assert closed["n"] == 1
+
+
+@patch("ar_pipeline.ingest.auth.msal.PublicClientApplication")
+def test_delegated_auth_uses_me_not_users_mailbox(mock_app_cls, tmp_path):
+    auth = DelegatedGraphAuth(
+        "client-id", "https://login.microsoftonline.com/consumers", tmp_path / "cache.json"
+    )
+    mock_app_cls.return_value.get_accounts.return_value = [{"username": "someone@outlook.com"}]
+    mock_app_cls.return_value.acquire_token_silent.return_value = {"access_token": "tok"}
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(
+            200, json={"value": [], "@odata.deltaLink": "https://graph.microsoft.com/v1.0/DELTA"}
+        )
+
+    transport = httpx.MockTransport(handler)
+    client = HttpGraphClient(
+        auth,
+        "someone@outlook.com",
+        http=httpx.Client(transport=transport, base_url="https://graph.microsoft.com/v1.0"),
+    )
+    client.fetch_delta(None)
+    assert calls[0].startswith("https://graph.microsoft.com/v1.0/me/mailFolders/inbox/")
+    assert "/users/" not in calls[0]
 
 
 def test_fetch_delta_follows_pages_and_returns_delta_link():

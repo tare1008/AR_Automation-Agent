@@ -41,6 +41,8 @@ def _embedded_pg():
     # non-default value for the duration of that one test.
     os.environ["LLM_PROVIDER"] = "anthropic"
     os.environ["AUTO_APPROVE_MIN_CONFIDENCE"] = "0"
+    os.environ["MAILBOX_PROVIDER"] = "graph"
+    os.environ["BACKEND_URL"] = ""
 
     from ar_pipeline.config import get_settings
     from ar_pipeline.db.base import reset_engine

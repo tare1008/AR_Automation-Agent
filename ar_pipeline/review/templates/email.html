@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ view.email.subject }} — AR Review by MLDeep Systems{% endblock %}
+{% block content %}
+<p class="lede"><a href="/review">&larr; Journey</a></p>
+<h1>{{ view.email.subject }}</h1>
+<p class="meta">From {{ view.email.sender_address }} ·
+   received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·
+   <span class="badge{% if view.stage == 'Error' %} bad{% endif %}">{{ view.stage }}</span>
+</p>
+{% if view.email.error_detail %}<p class="error">{{ view.email.error_detail }}</p>{% endif %}
+
+{% if view.extractions %}
+<div class="table-wrap">
+<table class="subtable">
+  <thead><tr><th>Payment</th><th>Outcome</th><th>Delivery</th><th></th></tr></thead>
+  <tbody>
+  {% for x in view.extractions %}
+  <tr>
+    <td>#{{ x.payment_index }}</td>
+    <td>
+      {% if x.outcome in ("auto-approved", "approved") %}<span class="badge ok">{{ x.outcome }}</span>
+      {% elif x.outcome == "awaiting review" %}<span class="badge warn">{{ x.outcome }}</span>
+      {% elif x.outcome in ("rejected", "not a remittance") %}<span class="badge bad">{{ x.outcome }}</span>
+      {% else %}<span class="badge">{{ x.outcome }}</span>{% endif %}
+    </td>
+    <td>
+      {% if x.delivery == "delivered" %}<span class="badge ok">delivered</span>
+      {% elif x.delivery == "failed" %}<span class="badge bad">failed</span>
+      {% elif x.delivery == "pending" %}<span class="badge warn">pending</span>
+      {% else %}—{% endif %}
+    </td>
+    <td><a href="/review/extraction/{{ x.id }}">&rarr; JSON</a></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="lede">No extraction yet for this email.</p>
+{% endif %}
+
+<section class="pane" style="margin-top:1rem">
+  <h2>Original</h2>
+  {% if safe_body_html %}
+    <iframe class="original" sandbox srcdoc="{{ safe_body_html }}"></iframe>
+  {% else %}
+    <pre class="raw">{{ view.email.body_text }}</pre>
+  {% endif %}
+  {% if view.attachments %}
+  <h3>Attachments</h3>
+  <ul>
+    {% for a in view.attachments %}
+    <li>
+      {% if view.extractions %}
+      <a href="/review/{{ view.extractions[0].id }}/attachment/{{ a.id }}" target="_blank">{{ a.filename }}</a>
+      {% else %}
+      {{ a.filename }}
+      {% endif %}
+      <span class="badge">{{ a.content_type }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}

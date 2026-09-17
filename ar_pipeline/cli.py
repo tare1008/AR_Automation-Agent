@@ -87,6 +87,40 @@ def _cmd_tick(repeat: int) -> int:
     return 0
 
 
+def _cmd_graph_login() -> int:
+    from ar_pipeline.config import get_settings
+    from ar_pipeline.ingest.auth import DelegatedGraphAuth, GraphNotConfigured
+
+    if get_settings().graph_auth_mode != "delegated":
+        print("GRAPH_AUTH_MODE is not 'delegated' — set it in .env first.", file=sys.stderr)
+        return 2
+    try:
+        auth = DelegatedGraphAuth.from_settings()
+    except GraphNotConfigured:
+        print("GRAPH_CLIENT_ID is not set — see the Azure app registration steps.", file=sys.stderr)
+        return 2
+    account = auth.login_device_code()
+    print(f"\nSigned in as {account}. Token cache saved — poll_inbox can run unattended now.")
+    return 0
+
+
+def _cmd_gmail_login() -> int:
+    from ar_pipeline.ingest.gmail_auth import GmailAuth, GmailNotConfigured
+
+    try:
+        auth = GmailAuth.from_settings()
+    except GmailNotConfigured:
+        print(
+            "GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET are not set — see the Google Cloud"
+            " OAuth setup steps.",
+            file=sys.stderr,
+        )
+        return 2
+    email = auth.login_interactive()
+    print(f"\nSigned in as {email}. Token cache saved — poll_inbox can run unattended now.")
+    return 0
+
+
 def _cmd_status() -> int:
     from sqlalchemy import func, select
     from sqlalchemy.orm import InstrumentedAttribute, Session
@@ -132,6 +166,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("status", help="print emails/extractions/deliveries by state")
+    sub.add_parser(
+        "graph-login",
+        help="one-time device-code sign-in for GRAPH_AUTH_MODE=delegated (personal accounts)",
+    )
+    sub.add_parser(
+        "gmail-login",
+        help="one-time OAuth sign-in for MAILBOX_PROVIDER=gmail",
+    )
     return parser
 
 
@@ -148,6 +190,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_tick(args.repeat)
     if args.command == "status":
         return _cmd_status()
+    if args.command == "graph-login":
+        return _cmd_graph_login()
+    if args.command == "gmail-login":
+        return _cmd_gmail_login()
     return 2  # unreachable: subparser is required
 
 

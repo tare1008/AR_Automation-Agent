@@ -13,6 +13,8 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "httpx>=0.28",
     "msal>=1.38.0",
+    "google-auth>=2.35.0",
+    "google-auth-oauthlib>=1.2.1",
     "pdfplumber>=0.11.10",
     "beautifulsoup4>=4.15.0",
     "lxml>=6.1.3",
@@ -75,7 +77,14 @@ no_implicit_optional = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["pgserver.*", "apscheduler.*", "msal.*", "reportlab.*", "pdfplumber.*"]
+module = [
+    "pgserver.*",
+    "apscheduler.*",
+    "msal.*",
+    "reportlab.*",
+    "pdfplumber.*",
+    "google_auth_oauthlib.*",
+]
 ignore_missing_imports = true
 
 [build-system]
