@@ -53,9 +53,7 @@ _LEDE = (
 )
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    rows = received_list()
+def _fragment_html(rows: list[dict]) -> str:
     table = "".join(_row_html(payload) for payload in rows)
     body = (
         "<div class='table-wrap'><table><thead><tr>"
@@ -65,6 +63,38 @@ def index() -> str:
         if rows
         else _EMPTY
     )
+    return (
+        f"<div class='masthead-row'>{_LEDE}"
+        f"<div class='stat'><span class='n'>{len(rows)}</span>"
+        "<span class='label'>Received</span></div>"
+        "</div>"
+        f"{body}"
+    )
+
+
+# Same live-poll pattern as the review app's review.js, sized for this one
+# page: refetch the fragment every few seconds, swap it in, pause while the
+# tab isn't visible. Inlined rather than a shared static file since this
+# stub has no other JS.
+_POLL_SCRIPT = """
+<script>
+(function () {
+  var el = document.getElementById('backend-live');
+  if (!el) return;
+  setInterval(function () {
+    if (document.hidden) return;
+    fetch('/fragment').then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) { if (html !== null) el.innerHTML = html; })
+      .catch(function () {});
+  }, 3500);
+})();
+</script>
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    inner = _fragment_html(received_list())
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -78,14 +108,15 @@ def index() -> str:
         "<span class='brand-by'>by MLDeep Systems</span>"
         "</div>"
         "</header>"
-        "<main>"
-        f"<div class='masthead-row'>{_LEDE}"
-        f"<div class='stat'><span class='n'>{len(rows)}</span>"
-        "<span class='label'>Received</span></div>"
-        "</div>"
-        f"{body}"
-        "</main></body></html>"
+        f"<main><div id='backend-live'>{inner}</div></main>"
+        f"{_POLL_SCRIPT}"
+        "</body></html>"
     )
+
+
+@app.get("/fragment", response_class=HTMLResponse)
+def fragment() -> str:
+    return _fragment_html(received_list())
 
 
 @app.get("/remittances")

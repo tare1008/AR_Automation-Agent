@@ -65,3 +65,18 @@ def test_index_escapes_values():
     p["header"]["payer_name"] = "<script>alert(1)</script>"
     c.post("/remittances", json=p, headers={"Idempotency-Key": "ext-x"})
     assert "<script>alert(1)</script>" not in c.get("/").text
+
+
+def test_fragment_is_bare_and_matches_index_content():
+    c = _client()
+    c.post("/remittances", json=_payload("ext-77"), headers={"Idempotency-Key": "ext-77"})
+    r = c.get("/fragment")
+    assert r.status_code == 200
+    assert "<!doctype" not in r.text.lower()
+    assert "<header" not in r.text.lower()
+    assert "ext-77" in r.text
+
+
+def test_fragment_shows_empty_state_with_no_remittances():
+    c = _client()
+    assert "No remittances received yet" in c.get("/fragment").text

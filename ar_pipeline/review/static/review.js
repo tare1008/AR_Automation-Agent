@@ -57,4 +57,25 @@
       renumberDeductions(parent);
     }
   });
+
+  // Live-updating list pages: any container with data-poll-url refetches
+  // its own fragment on an interval and swaps it in, so Journey/Queue/
+  // Approved reflect pipeline progress without a manual reload. Paused
+  // while the tab isn't visible so a forgotten background tab is quiet.
+  document.querySelectorAll("[data-poll-url]").forEach(function (container) {
+    var url = container.dataset.pollUrl;
+    var interval = parseInt(container.dataset.pollInterval, 10) || 3500;
+    setInterval(function () {
+      if (document.hidden) return;
+      fetch(url, { headers: { "X-Requested-With": "fetch" } })
+        .then(function (resp) { return resp.ok ? resp.text() : null; })
+        .then(function (html) {
+          if (html !== null) container.innerHTML = html;
+        })
+        .catch(function () {
+          // a transient fetch failure just means this tick's update is
+          // skipped — the next interval tries again.
+        });
+    }, interval);
+  });
 })();

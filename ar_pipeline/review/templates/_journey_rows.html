@@ -1,0 +1,92 @@
+{% if not rows %}
+<p>No emails yet. Run <code>ar-pipeline ingest-eml &hellip;</code>.</p>
+{% else %}
+{% set ns = namespace(auto=0, awaiting=0) %}
+{% for r in rows %}
+  {% for x in r.extractions %}
+    {% if x.outcome == "auto-approved" %}{% set ns.auto = ns.auto + 1 %}{% endif %}
+    {% if x.outcome == "awaiting review" %}{% set ns.awaiting = ns.awaiting + 1 %}{% endif %}
+  {% endfor %}
+{% endfor %}
+<div class="stat-row">
+  <a class="stat-tile" href="/review" title="See every email in the journey below">
+    <div class="n">{{ rows|length }}</div><div class="label">Email{{ "s" if rows|length != 1 else "" }} received</div>
+  </a>
+  <a class="stat-tile" href="/review/approved?by=auto" title="See only the auto-approved payments">
+    <div class="n good">{{ ns.auto }}</div><div class="label">Auto-approved</div>
+  </a>
+  <a class="stat-tile" href="/review/queue" title="Open the review queue">
+    <div class="n warn">{{ ns.awaiting }}</div><div class="label">Awaiting review</div>
+  </a>
+</div>
+
+<div class="table-wrap">
+<table>
+  <thead><tr>
+    <th>Email received</th><th>Pipeline</th><th>Extractions</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td>
+      <a class="cell-stack cell-link" href="/review/email/{{ r.email_id }}" title="Open this email">
+        <span class="secondary">{{ r.received_at.strftime("%Y-%m-%d %H:%M") }}</span>
+        <span class="primary truncate">{{ r.subject }}</span>
+        <span class="secondary truncate">{{ r.sender_address }}
+          {%- if r.attachment_count %} &middot; {{ r.attachment_count }} attachment{{ "s" if r.attachment_count != 1 else "" }}{% endif %}</span>
+      </a>
+    </td>
+    <td>
+      {% if r.stage == "Error" %}<span class="badge bad">{{ r.stage }}</span>
+      {% else %}<span class="badge">{{ r.stage }}</span>{% endif %}
+      {% if r.error_detail %}<div class="error">{{ r.error_detail }}</div>{% endif %}
+    </td>
+    <td>
+      {% if not r.extractions %}
+        {% if r.stage == "Error" %}
+          <span class="badge">&mdash;</span>
+        {% else %}
+          <span class="badge in-progress">Extraction in progress &mdash; please wait</span>
+        {% endif %}
+      {% else %}
+      <table class="subtable subtable-centered">
+        <thead><tr>
+          <th>Outcome</th><th>Flags</th><th>Confidence</th><th>Delivery</th><th></th>
+        </tr></thead>
+        <tbody>
+        {% for x in r.extractions %}
+        <tr>
+          <td>
+            {% if x.outcome in ("auto-approved", "approved") %}
+              <span class="badge ok">{{ x.outcome }}</span>
+            {% elif x.outcome == "awaiting review" %}
+              <span class="badge warn">{{ x.outcome }}</span>
+            {% elif x.outcome in ("rejected", "not a remittance") %}
+              <span class="badge bad">{{ x.outcome }}</span>
+            {% else %}
+              <span class="badge">{{ x.outcome }}</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if x.flag_count %}<span class="badge warn">{{ x.flag_count }} flag{{ "s" if x.flag_count != 1 else "" }}</span>{% else %}—{% endif %}
+          </td>
+          <td class="num">{{ "%.2f"|format(x.confidence) if x.confidence is not none else "—" }}</td>
+          <td>
+            {% if x.delivery == "delivered" %}<span class="badge ok">delivered</span>
+            {% elif x.delivery == "failed" %}<span class="badge bad">failed</span>
+            {% elif x.delivery == "pending" %}<span class="badge warn">pending</span>
+            {% else %}—{% endif %}
+          </td>
+          <td><a href="/review/extraction/{{ x.id }}">&rarr; JSON</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}

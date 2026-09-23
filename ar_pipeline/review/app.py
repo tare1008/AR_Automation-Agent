@@ -145,6 +145,19 @@ def poll_now_action(
     return RedirectResponse(f"/review?flash={quote(flash)}", status_code=303)
 
 
+@router.get("/journey-rows", response_class=HTMLResponse)
+def journey_rows_fragment(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    """Just the stat tiles + table body — polled by the Journey page's live
+    update so it never has to reload the whole page to show progress."""
+    from ar_pipeline.review.service import list_journey
+
+    return _render(request, "_journey_rows.html", rows=list_journey(session))
+
+
 @router.get("/queue", response_class=HTMLResponse)
 def queue_page(
     request: Request,
@@ -160,6 +173,17 @@ def queue_page(
         rows=list_pending(session),
         flash=request.query_params.get("flash"),
     )
+
+
+@router.get("/queue-rows", response_class=HTMLResponse)
+def queue_rows_fragment(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import list_pending
+
+    return _render(request, "_queue_rows.html", rows=list_pending(session))
 
 
 @router.get("/approved", response_class=HTMLResponse)
@@ -182,6 +206,21 @@ def approved_page(
         by=by,
         flash=request.query_params.get("flash"),
     )
+
+
+@router.get("/approved-rows", response_class=HTMLResponse)
+def approved_rows_fragment(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import list_approved
+
+    rows = list_approved(session)
+    by = request.query_params.get("by")
+    if by == "auto":
+        rows = [r for r in rows if r.reviewed_by == AUTO_REVIEWER]
+    return _render(request, "_approved_rows.html", rows=rows, by=by)
 
 
 @router.get("/errors", response_class=HTMLResponse)

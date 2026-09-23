@@ -262,6 +262,12 @@ a.stat-tile:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 .badge.ok { background: var(--good-bg); color: var(--good); border-color: transparent; }
 .badge.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
 .badge.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+.badge.in-progress {
+  background: var(--brand-soft); color: var(--brand-strong); border-color: transparent;
+  animation: badge-pulse 1.6s ease-in-out infinite;
+}
+@keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .badge.in-progress { animation: none; } }
 
 .detail { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
 .pane { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; overflow: auto; max-height: 80vh; background: var(--surface); box-shadow: var(--shadow-sm); }
