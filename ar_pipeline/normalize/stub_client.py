@@ -47,13 +47,49 @@ _INVOICE_RE = re.compile(
 _INVOICE_LABEL_RE = re.compile(r"\b(?:invoice|inv|bill)\s*(?:no\.?|number|#)", re.I)
 _CODE_RE = re.compile(r"\b[A-Za-z]{2,6}\d{6,}\b")
 _LABEL_WINDOW = 200
-# a labeled payer-ish name: "Beneficiary's name:", "Beneficiary Name:",
-# "Remitter's name:", "Vendor Name:", "Payer Name:" followed by a name on
-# the same line (up to the next newline or table-cell separator).
-_PAYER_LABEL_RE = re.compile(
-    r"(?:beneficiary|vendor|remitter|payer)'?s?\s*name\s*[:#]\s*([^\n|]{2,80})",
+# second fallback: the bare word "invoice" (not "invoices", not "invoice
+# no/number/#" already handled above, not "Invoice Date") directly followed
+# by a code-shaped token containing a digit — covers "Invoice EXP-2026-0900"
+# style mentions that name a number without a conventional INV-/label prefix.
+_INVOICE_WORD_RE = re.compile(
+    r"\binvoice\s+((?=[A-Za-z0-9/-]*\d)[A-Za-z0-9][A-Za-z0-9/-]{2,})\b",
     re.I,
 )
+# a labeled payer-ish name: "Remitter's name:", "Vendor Name:", "Payer
+# Name:" followed by a name on the same line (up to the next newline or
+# table-cell separator). Deliberately excludes "beneficiary" — in a wire
+# transfer the beneficiary is the party RECEIVING the money (us), never
+# the payer, so a "Beneficiary's name:" label names our own company and
+# must not be attributed to the customer who paid.
+_PAYER_LABEL_RE = re.compile(
+    r"(?:vendor|remitter|payer)'?s?\s*name\s*[:#]\s*([^\n|]{2,80})",
+    re.I,
+)
+# fallback: a plain sign-off line. Most remittance emails never use a
+# "Beneficiary's name:" label at all — they just close with
+# "Regards,\n<Company>" — so without this fallback, the payer's name is
+# printed right there in the email and the stub still reports it missing.
+# Heuristic: scan from the LAST line of the message backward (a sign-off
+# sits at the end) for the first line that reads as a name rather than a
+# sentence, a reference code, or an amount: no digits, at least two
+# capitalized words (a short connector like "and"/"of"/"&" doesn't have to
+# be capitalized), and not a salutation ("Dear Team," would otherwise pass
+# the same shape check).
+_SALUTATION_WORDS = {"dear", "hi", "hello", "hey", "greetings", "attention", "attn"}
+_CONNECTOR_WORDS = {"and", "of", "the", "&", "for"}
+
+
+def _looks_like_company_name(line: str) -> bool:
+    if not (2 <= len(line) <= 80):
+        return False
+    if re.search(r"\d", line) or "@" in line:
+        return False
+    words = re.findall(r"[A-Za-z&]+", line)
+    if len(words) < 2 or words[0].lower() in _SALUTATION_WORDS:
+        return False
+    return all(w.lower() in _CONNECTOR_WORDS or w[0].isupper() for w in words)
+
+
 # an explicit non-INR currency code — INR is the default absent one of these.
 _CURRENCY_RE = re.compile(r"\b(USD|EUR|GBP|AED|SGD|AUD|CAD|CHF|JPY)\b")
 # language that says a payment already happened, or a bank reference is
@@ -119,12 +155,21 @@ def _invoice_number(text: str) -> str:
         code = _CODE_RE.search(window)
         if code:
             return code.group(0)
+    word = _INVOICE_WORD_RE.search(text)
+    if word:
+        return word.group(1)
     return ""
 
 
 def _payer_name(text: str) -> str:
     m = _PAYER_LABEL_RE.search(text)
-    return m.group(1).strip() if m else _PAYER_UNKNOWN
+    if m:
+        return m.group(1).strip()
+    for line in reversed(text.strip().splitlines()):
+        candidate = line.strip()
+        if _looks_like_company_name(candidate):
+            return candidate
+    return _PAYER_UNKNOWN
 
 
 def _currency(text: str) -> str:

@@ -59,6 +59,11 @@ def test_invoice_number_falls_back_to_bill_no_label():
     assert out.payments[0].line_items[0].invoice_number == "ACM2510006275"
 
 
+def test_invoice_number_falls_back_to_a_bare_invoice_word_mention():
+    out = _parse("We have wired USD 22,500.00 towards Invoice EXP-2026-0900 dated 10-Sep-2026.")
+    assert out.payments[0].line_items[0].invoice_number == "EXP-2026-0900"
+
+
 def test_no_amounts_still_produces_a_reviewable_draft():
     out = _parse("Subject: FW: remittance\n\nplease find attached")
     p = out.payments[0]
@@ -81,9 +86,20 @@ def test_plain_integer_amount_used_only_as_a_fallback():
     assert out2.payments[0].total_paid_amount == Decimal("1234567.00")
 
 
-def test_payer_name_found_from_a_beneficiary_label():
+def test_beneficiary_label_is_not_treated_as_the_payer_name():
+    # "Beneficiary" is the receiver of the wire — i.e. us — never the payer.
+    # A beneficiary label alone (no real sign-off to fall back to) must leave
+    # payer_name empty rather than confidently filling it with our own name.
     out = _parse("Beneficiary's name: ACME METALS LIMITED\nBeneficiary's bank: SOME BANK")
-    assert out.payments[0].payer_name == "ACME METALS LIMITED"
+    assert out.payments[0].payer_name == ""
+
+
+def test_beneficiary_label_does_not_shadow_the_real_payer_in_the_sign_off():
+    out = _parse(
+        "Beneficiary's name: ACME METALS LTD\nSWIFT/UTR Reference: GTBUS20260304X7712\n\n"
+        "Regards,\nAccounts Payable\nGlobal Parts Export Inc."
+    )
+    assert out.payments[0].payer_name == "Global Parts Export Inc."
 
 
 def test_payer_name_found_from_a_vendor_name_label():
@@ -93,6 +109,31 @@ def test_payer_name_found_from_a_vendor_name_label():
 
 def test_payer_name_empty_when_no_label_present():
     out = _parse("Subject: hi\n\nplease see attached, no name label here")
+    assert out.payments[0].payer_name == ""
+
+
+def test_payer_name_falls_back_to_the_sign_off_company_line():
+    out = _parse(
+        "Dear Sir,\nWe have remitted payment towards Invoice INV-8841.\n"
+        "Amount Paid: INR 4,50,000.00\nUTR: HDFC52026091700123\n\n"
+        "Regards,\nAccounts Payable\nBright Fasteners Ltd"
+    )
+    assert out.payments[0].payer_name == "Bright Fasteners Ltd"
+
+
+def test_payer_name_sign_off_fallback_prefers_a_labeled_name_when_both_present():
+    out = _parse("Vendor Name: ACME METALS LTD\nAmount: 1,000.00\n\nRegards,\nAmit Agarwal")
+    # the explicit label is more reliable than the sign-off guess — it wins.
+    assert out.payments[0].payer_name == "ACME METALS LTD"
+
+
+def test_payer_name_sign_off_fallback_ignores_a_reference_or_total_line():
+    out = _parse(
+        "Dear Team,\nWe have remitted the payment.\nUTR: STBK52026091700112\n"
+        "Total remitted  6,58,300.00"
+    )
+    # the last lines are a reference code and an amount line, not a name —
+    # neither is title-cased-with-no-digits, so the guess stays empty.
     assert out.payments[0].payer_name == ""
 
 
