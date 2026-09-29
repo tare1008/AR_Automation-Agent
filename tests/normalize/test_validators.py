@@ -58,7 +58,23 @@ def _payload(**overrides: Any) -> RemittancePayload:
 
 
 def test_check_version_constant() -> None:
-    assert CHECK_VERSION == "2"
+    assert CHECK_VERSION == "3"
+
+
+def test_underpaying_line_is_not_flagged_here() -> None:
+    """A partial payment is judged by the ledger check, not by check 1."""
+    flags = validate_payload(
+        _payload(
+            line_items=[
+                LineItem(
+                    invoice_number="INV-1",
+                    invoice_amount=Decimal("100.00"),
+                    amount_paid=Decimal("25.00"),
+                )
+            ]
+        )
+    )
+    assert flags == []
 
 
 def test_clean_payload_has_no_flags() -> None:

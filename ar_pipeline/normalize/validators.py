@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from ar_pipeline.schema.canonical import RemittancePayload
 
-CHECK_VERSION = "2"
+CHECK_VERSION = "3"
 
 _KNOWN_REFERENCE_TYPES = {"utr", "rtgs", "neft", "imps", "request_number", "cheque"}
 _TOLERANCE = Decimal("0.02")
@@ -27,11 +27,13 @@ def validate_payload(payload: RemittancePayload) -> list[str]:
     line_items = payload.line_items
     flags: list[str] = []
 
-    # 1. line net identity
+    # 1. line net identity — only a line that pays MORE than its own stated
+    # invoice is flagged here. Paying less is a partial payment; the ledger
+    # check (ledger/checks.py) judges it against the invoice's real balance.
     for i, line in enumerate(line_items):
         sum_ded = sum((d.amount for d in line.deductions), Decimal("0"))
         residual = line.invoice_amount - sum_ded - line.amount_paid
-        if abs(residual) > _TOLERANCE:
+        if residual < -_TOLERANCE:
             flags.append(
                 f"line {i} ({line.invoice_number}): invoice {line.invoice_amount} "
                 f"- deductions {sum_ded} != amount_paid {line.amount_paid}"
