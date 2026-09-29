@@ -24,6 +24,7 @@ from ar_pipeline.db.models import (
     ExtractionSource,
     RawExtraction,
 )
+from ar_pipeline.ledger.checks import check_against_ledger
 from ar_pipeline.normalize.validators import validate_payload
 from ar_pipeline.pipeline.routing import approve_and_queue, settle_email
 from ar_pipeline.review.auth import User
@@ -33,6 +34,11 @@ from ar_pipeline.schema.canonical import RemittancePayload
 
 class ReviewError(Exception):
     """A reviewer action that cannot proceed; the message is shown as a flash."""
+
+
+class ApprovalBlocked(ReviewError):
+    """Approval stopped because the checks found something the reviewer
+    hadn't been shown yet. Edits are saved; approving again goes through."""
 
 
 @dataclass(frozen=True)
@@ -552,11 +558,17 @@ def save_edits(
                 edited_by=user.name,
             )
         )
+    shown = list(ext.validation_flags or [])
     ext.canonical = normalised
-    ext.validation_flags = validate_payload(payload)
+    ext.validation_flags = validate_payload(payload) + check_against_ledger(session, payload)
     session.flush()
 
     if approve:
+        new_flags = [f for f in ext.validation_flags if f not in shown]
+        if new_flags:
+            raise ApprovalBlocked(
+                "Checks changed since you opened this — review the new flags and approve again"
+            )
         approve_extraction(session, ext.id, user)
     return edits
 
