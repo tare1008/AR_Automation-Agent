@@ -195,17 +195,32 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
                 ]
             out.append(
                 LineLedger(
-                    number, currency, None, None, None, None, None, None,
-                    awaiting.get(key, _ZERO), suggestions,
+                    number,
+                    currency,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    awaiting.get(key, _ZERO),
+                    suggestions,
                 )
             )
             continue
         bal = balances(session, [invoice])[0]
         out.append(
             LineLedger(
-                invoice.invoice_number, invoice.currency, invoice.id, invoice.source,
-                Decimal(invoice.amount), bal.paid, bal.outstanding,
-                bal.outstanding - line_settled(line), awaiting.get(key, _ZERO), [],
+                invoice.invoice_number,
+                invoice.currency,
+                invoice.id,
+                invoice.source,
+                Decimal(invoice.amount),
+                bal.paid,
+                bal.outstanding,
+                bal.outstanding - line_settled(line),
+                awaiting.get(key, _ZERO),
+                [],
             )
         )
     return out

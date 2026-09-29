@@ -208,9 +208,7 @@ class Invoice(Base):
     source: Mapped[str] = mapped_column(String(10))
     paid_before_import: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
     note: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -229,9 +227,7 @@ class InvoicePayment(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoice.id"), index=True)
-    extraction_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("extraction.id"), index=True
-    )
+    extraction_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("extraction.id"), index=True)
     line_index: Mapped[int] = mapped_column(Integer)
     amount_paid: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     deductions_total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
@@ -239,12 +235,8 @@ class InvoicePayment(Base):
     currency: Mapped[str] = mapped_column(String(3))
     payment_reference: Mapped[str | None] = mapped_column(Text)
     payment_date: Mapped[date | None] = mapped_column(Date)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint(
-            "extraction_id", "line_index", name="uq_invoice_payment_extraction_line"
-        ),
+        UniqueConstraint("extraction_id", "line_index", name="uq_invoice_payment_extraction_line"),
     )

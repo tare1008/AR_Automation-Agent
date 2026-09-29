@@ -46,8 +46,11 @@ def test_not_near_match(line, invoice):
 
 def _inv(number: str, payer: str | None) -> Invoice:
     return Invoice(
-        invoice_number=number, number_key=number_key(number), payer_name=payer,
-        amount=Decimal("1"), source="books",
+        invoice_number=number,
+        number_key=number_key(number),
+        payer_name=payer,
+        amount=Decimal("1"),
+        source="books",
     )
 
 
