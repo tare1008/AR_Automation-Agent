@@ -9,6 +9,8 @@ Subcommands:
   (or N times), synchronously — step a demo instead of waiting on the
   in-process scheduler.
 * ``status`` — print a summary of emails, extractions and deliveries by state.
+* ``ledger-backfill`` — post every already-approved payment into the invoice
+  ledger (safe to re-run).
 
 All commands use the configured ``DATABASE_URL`` / ``BLOB_DIR``.
 """
@@ -153,6 +155,16 @@ def _cmd_status() -> int:
     return 0
 
 
+def _cmd_ledger_backfill() -> int:
+    from ar_pipeline.db.base import get_session
+    from ar_pipeline.ledger import posting
+
+    with get_session() as session:
+        extractions, rows = posting.backfill(session)
+    print(f"{rows} payment line(s) posted from {extractions} approved extraction(s)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ar-pipeline", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -174,6 +186,7 @@ def build_parser() -> argparse.ArgumentParser:
         "gmail-login",
         help="one-time OAuth sign-in for MAILBOX_PROVIDER=gmail",
     )
+    sub.add_parser("ledger-backfill", help="post already-approved payments into the invoice ledger")
     return parser
 
 
@@ -194,6 +207,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_graph_login()
     if args.command == "gmail-login":
         return _cmd_gmail_login()
+    if args.command == "ledger-backfill":
+        return _cmd_ledger_backfill()
     return 2  # unreachable: subparser is required
 
 

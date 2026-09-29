@@ -135,3 +135,11 @@ def test_tick_command_runs_without_backend(wired, capsys, monkeypatch):
 def test_tick_rejects_bad_repeat(capsys):
     assert cli.main(["tick", "--repeat", "0"]) == 2
     assert "--repeat must be >= 1" in capsys.readouterr().err
+
+
+def test_ledger_backfill_command(wired, capsys, monkeypatch):
+    monkeypatch.setattr("ar_pipeline.ledger.posting.backfill", lambda session: (2, 3))
+    from ar_pipeline.cli import main
+
+    assert main(["ledger-backfill"]) == 0
+    assert "3 payment line(s) posted from 2 approved extraction(s)" in capsys.readouterr().out
