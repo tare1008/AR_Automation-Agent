@@ -60,29 +60,39 @@ class _Row:
     outstanding: Decimal | None
 
 
-def _money(raw: str) -> Decimal:
-    value = Decimal(raw.replace(",", ""))
+_LIMIT = Decimal(10) ** 12  # Numeric(14, 2) holds at most 12 integer digits
+_CENT = Decimal("0.01")
+
+
+def _money(n: int, column: str, raw: str) -> Decimal | str:
+    try:
+        value = Decimal(raw.replace(",", ""))
+    except InvalidOperation:
+        return f"row {n}: {column} is not a number"
     if not value.is_finite():
-        raise InvalidOperation
+        return f"row {n}: {column} is not a number"
+    if abs(value) >= _LIMIT:
+        return f"row {n}: {column} is too large"
+    if value != value.quantize(_CENT):
+        return f"row {n}: {column} has more than 2 decimal places"
     return value
 
 
 def _parse(n: int, raw: dict[str, str]) -> _Row | str:
     number = raw.get("invoice_number", "")
-    if not number:
+    if not number_key(number):
         return f"row {n}: invoice_number is blank"
-    try:
-        amount = _money(raw.get("invoice_amount", ""))
-    except InvalidOperation:
-        return f"row {n}: invoice_amount is not a number"
+    amount = _money(n, "invoice_amount", raw.get("invoice_amount", ""))
+    if isinstance(amount, str):
+        return amount
     if amount <= 0:
         return f"row {n}: invoice_amount must be more than 0"
     outstanding: Decimal | None = None
     if raw.get("outstanding_amount"):
-        try:
-            outstanding = _money(raw["outstanding_amount"])
-        except InvalidOperation:
-            return f"row {n}: outstanding_amount is not a number"
+        parsed = _money(n, "outstanding_amount", raw["outstanding_amount"])
+        if isinstance(parsed, str):
+            return parsed
+        outstanding = parsed
         if outstanding < 0 or outstanding > amount:
             return f"row {n}: outstanding_amount must be between 0 and invoice_amount"
     invoice_date: date | None = None
@@ -104,6 +114,13 @@ def _posted_settled(session: Session, invoice: Invoice, currency: str) -> Decima
         )
     )
     return Decimal(total or 0)
+
+
+def _has_payments(session: Session, invoice: Invoice) -> bool:
+    return (
+        session.scalar(select(InvoicePayment.id).where(InvoicePayment.invoice_id == invoice.id))
+        is not None
+    )
 
 
 def import_open_invoices(session: Session, data: bytes) -> ImportResult:
@@ -161,6 +178,12 @@ def import_open_invoices(session: Session, data: bytes) -> ImportResult:
                 )
             )
             result.imported += 1
+            continue
+        if row.currency != existing.currency and _has_payments(session, existing):
+            result.skipped.append(
+                f"row {n}: {row.number} currency differs from payments already recorded "
+                f"({existing.currency}); fix the invoice in your books or the file"
+            )
             continue
         if existing.source == "email" and abs(existing.amount - row.amount) > TOLERANCE:
             existing.note = (

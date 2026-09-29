@@ -84,3 +84,10 @@ def test_backfill_posts_approved_only_and_is_rerunnable(db_session, make_invoice
     make_extraction(status="pending_review", amount_paid="25", invoice_amount="100")
     assert backfill(db_session) == (1, 1)
     assert backfill(db_session) == (0, 0)
+
+
+def test_line_whose_number_normalizes_to_empty_is_skipped(db_session, make_extraction):
+    ext = make_extraction(invoice_number=" / ", invoice_amount="100", amount_paid="100")
+    assert post_extraction(db_session, ext) == 0
+    assert _payments(db_session) == []
+    assert db_session.scalars(select(Invoice)).all() == []

@@ -47,3 +47,24 @@ def test_detail_running_balance(db_session, make_invoice, post_payment):
         Decimal("-15"),
     ]
     assert detail.row.status == "overpaid"
+
+
+def test_after_this_ignores_a_payment_in_another_currency(
+    db_session, make_invoice, make_extraction
+):
+    from ar_pipeline.ledger.queries import line_ledgers
+
+    make_invoice("INV-1", "100")
+    ext = make_extraction(invoice_amount="100", amount_paid="25", currency="USD")
+    (strip,) = line_ledgers(db_session, ext)
+    assert strip.outstanding == Decimal("100.00")
+    assert strip.after_this == Decimal("100.00")
+
+
+def test_after_this_subtracts_a_same_currency_payment(db_session, make_invoice, make_extraction):
+    from ar_pipeline.ledger.queries import line_ledgers
+
+    make_invoice("INV-1", "100")
+    ext = make_extraction(invoice_amount="100", amount_paid="25")
+    (strip,) = line_ledgers(db_session, ext)
+    assert strip.after_this == Decimal("75.00")

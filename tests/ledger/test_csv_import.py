@@ -123,3 +123,49 @@ def test_outstanding_net_of_posted_payments_sets_paid_before_import(
     inv, bal = _balance(db_session, "INV-1")
     assert inv.paid_before_import == Decimal("25.00")
     assert bal.paid == Decimal("50.00")
+
+
+@pytest.mark.parametrize(
+    ("row", "reason"),
+    [
+        ("-,,,100,,", "row 2: invoice_number is blank"),
+        (" / ,,,100,,", "row 2: invoice_number is blank"),
+        ("A-1,,,1000000000000,,", "row 2: invoice_amount is too large"),
+        ("A-1,,,-1000000000000,,", "row 2: invoice_amount is too large"),
+        ("A-1,,,100,,1000000000000", "row 2: outstanding_amount is too large"),
+        ("A-1,,,100.123,,", "row 2: invoice_amount has more than 2 decimal places"),
+        ("A-1,,,100,,50.555", "row 2: outstanding_amount has more than 2 decimal places"),
+    ],
+)
+def test_unusable_numbers_and_amounts_are_skipped(db_session, row, reason):
+    r = _run(db_session, row + "\n")
+    assert r.imported == 0
+    assert r.skipped == [reason]
+
+
+def test_largest_amount_that_fits_is_accepted(db_session):
+    r = _run(db_session, "A-1,,,999999999999.99,,0.10\n")
+    assert (r.imported, r.skipped) == (1, [])
+
+
+def test_currency_change_on_an_invoice_with_payments_is_skipped(
+    db_session, make_invoice, post_payment
+):
+    inv = make_invoice("INV-1", "100")
+    post_payment(inv, "25")
+    r = _run(db_session, "INV-1,Acme Corp,,100,USD,75\n")
+    assert (r.imported, r.updated) == (0, 0)
+    assert r.skipped == [
+        "row 2: INV-1 currency differs from payments already recorded (INR); "
+        "fix the invoice in your books or the file"
+    ]
+    db_session.refresh(inv)
+    assert inv.currency == "INR"
+
+
+def test_currency_change_without_payments_is_allowed(db_session, make_invoice):
+    inv = make_invoice("INV-1", "100")
+    r = _run(db_session, "INV-1,Acme Corp,,100,USD,\n")
+    assert (r.updated, r.skipped) == (1, [])
+    db_session.refresh(inv)
+    assert inv.currency == "USD"

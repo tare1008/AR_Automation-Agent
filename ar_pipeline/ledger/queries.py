@@ -209,6 +209,9 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
             )
             continue
         bal = balances(session, [invoice])[0]
+        # a payment in another currency isn't applied to the balance (spec §1)
+        applies = currency == invoice.currency
+        after_this = bal.outstanding - line_settled(line) if applies else bal.outstanding
         out.append(
             LineLedger(
                 invoice.invoice_number,
@@ -218,7 +221,7 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
                 Decimal(invoice.amount),
                 bal.paid,
                 bal.outstanding,
-                bal.outstanding - line_settled(line),
+                after_this,
                 awaiting.get(key, _ZERO),
                 [],
             )
