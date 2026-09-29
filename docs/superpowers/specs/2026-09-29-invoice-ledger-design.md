@@ -82,6 +82,15 @@ changes.
 - **CSV upload** upserts by `number_key`. An existing `email` invoice becomes
   `books`, its amount is replaced, and if the amount changed the old figure is
   kept in `note`. Its payment rows stay attached.
+- **Re-uploading is safe.** The CSV's `outstanding_amount` is the ERP's view and
+  already includes payments this pipeline delivered, so on import
+  `paid_before_import = max(0, amount − outstanding − Σ settled of the invoice's
+  posted payments in its currency)` (for a new invoice that is just
+  `amount − outstanding`). A blank `outstanding_amount` gives a new invoice 0
+  and leaves an existing invoice's `paid_before_import` unchanged. Assumption:
+  the export includes payments already delivered; if the export lags delivery,
+  outstanding reads high until the next import. A row that changes the currency
+  of an invoice that already has payments is skipped.
 - **Approval** (the auto-approve path and the reviewer's Save & Approve) posts
   one `invoice_payments` row per line. If no invoice matches, an `email`
   invoice is created from the line's `invoice_amount`, `payer_name` and
@@ -162,6 +171,12 @@ approval time, inside the approval transaction:
   reloads with the flags and a flash "Checks changed since you opened this —
   review the new flags and approve again." Approving a second time with the
   same flags succeeds (a human may overrule a flag after seeing it).
+
+Approvals on the same invoice are serialized: the re-check takes a row lock on
+the matched invoice (`SELECT … FOR UPDATE`), or a transaction-scoped advisory
+lock on the number key for a not-yet-created invoice, held until the approval
+commits. Lines in one payment that share a number key are checked against the
+outstanding left after the earlier lines.
 
 Pending payments against the same invoice appear on the review screen as a
 note, not a flag: "₹50 more awaiting review on this invoice".

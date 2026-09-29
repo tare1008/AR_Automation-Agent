@@ -155,3 +155,12 @@ def test_ledger_backfill_rechecks_pending_items(wired, capsys, monkeypatch):
         "0 payment line(s) posted from 0 approved extraction(s)",
         "4 pending item(s) re-checked",
     ]
+
+
+def test_readme_documents_the_invoice_ledger_rollout():
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+    section = readme.split("## Invoice ledger", 1)[1].split("\n## ", 1)[0]
+    assert "dev_db.py migrate" in section
+    assert "alembic upgrade head" in section
+    assert "ar-pipeline ledger-backfill" in section
+    assert "invoice_number" in section and "outstanding_amount" in section

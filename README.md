@@ -61,6 +61,27 @@ protocol with Entra ID OIDC — no route changes.
 | `ingest-eml FILE [FILE ...]` | Import settlement emails from `.eml` files as `status="new"` — the offline equivalent of a mailbox poll. Deduplicates on `Message-ID`; never touches the Graph delta cursor. |
 | `tick [--repeat N]` | Run the pipeline-advance and delivery jobs once (or N times), synchronously — step a demo instead of waiting on the 60 s background scheduler. |
 | `status` | Print emails / extractions / deliveries grouped by state. |
+| `ledger-backfill` | Post already-approved payments into the invoice ledger, then re-check pending items' flags. Safe to re-run. |
+
+## Invoice ledger
+
+Rolling it out on an existing database:
+
+1. Migrate: `uv run python scripts/dev_db.py migrate` locally, or
+   `uv run alembic upgrade head` in production.
+2. Run `uv run ar-pipeline ledger-backfill` **before** the scheduler
+   auto-approves anything new, so every earlier approval counts toward its
+   invoice's balance. It also re-checks the flags of items waiting for review.
+3. Upload the client's open invoices on the **Invoices** tab (`/review/invoices`,
+   template CSV linked there). Pending items are re-checked after each upload.
+
+The CSV columns are `invoice_number`, `invoice_amount` (required) and
+`payer_name`, `invoice_date` (YYYY-MM-DD), `currency` (default INR),
+`outstanding_amount` (optional); at most 1 MB and 5,000 rows. Re-uploading is
+safe: `outstanding_amount` is read as the ERP's view, which already includes the
+payments this pipeline delivered, so they aren't counted twice. If the export
+lags delivery, outstanding reads high until the next upload. A blank
+`outstanding_amount` leaves an existing invoice's earlier-paid figure as it was.
 
 ## Local demo (no Microsoft 365, no deployment)
 
