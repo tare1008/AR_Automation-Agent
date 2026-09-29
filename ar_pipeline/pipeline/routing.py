@@ -1,5 +1,6 @@
-"""Shared post-review routing: approve an extraction and queue its delivery,
-and mark an email done once nothing is left to review.
+"""Shared post-review routing: approve an extraction, post it to the invoice
+ledger, and queue its delivery, and mark an email done once nothing is left
+to review.
 
 Both the human review path (`review/service.approve_extraction`) and the
 auto-send path (`normalize/service.normalize_one`) call these, so the two
@@ -12,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ar_pipeline.db.models import Delivery, Email, Extraction
+from ar_pipeline.ledger.posting import post_extraction
 
 AUTO_REVIEWER = "auto"
 
@@ -30,6 +32,7 @@ def approve_and_queue(session: Session, extraction: Extraction, *, reviewed_by: 
             extraction.canonical["envelope"] = {**env, "reviewed_by": reviewed_by}
     session.add(Delivery(extraction_id=extraction.id, status="pending", next_attempt_at=func.now()))
     session.flush()
+    post_extraction(session, extraction)
 
 
 def settle_email(session: Session, email: Email) -> None:
