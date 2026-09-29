@@ -1,0 +1,49 @@
+<div class="stat-row">
+  <a class="stat-tile{% if status == 'outstanding' %} active{% endif %}" href="/review/invoices?status=outstanding">
+    <div class="n">{{ summary.outstanding_total|money }}</div><div class="label">Outstanding (INR)</div>
+  </a>
+  <a class="stat-tile{% if status == 'partially_paid' %} active{% endif %}" href="/review/invoices?status=partially_paid">
+    <div class="n warn">{{ summary.partially_paid }}</div><div class="label">Partially paid</div>
+  </a>
+  <a class="stat-tile{% if status == 'paid' %} active{% endif %}" href="/review/invoices?status=paid">
+    <div class="n good">{{ summary.paid }}</div><div class="label">Paid</div>
+  </a>
+  <a class="stat-tile{% if status == 'attention' %} active{% endif %}" href="/review/invoices?status=attention">
+    <div class="n warn">{{ summary.attention }}</div><div class="label">Needs attention</div>
+  </a>
+</div>
+{% if status %}<p class="lede">Filtered. <a href="/review/invoices">Show all invoices</a></p>{% endif %}
+{% if not rows %}
+<p>No invoices yet. Upload your open invoices, or approve a payment to start the ledger.</p>
+{% else %}
+<div class="table-wrap">
+<table>
+  <thead><tr>
+    <th>Invoice</th><th>Payer</th><th class="num">Amount</th><th class="num">Paid</th>
+    <th class="num">Awaiting review</th><th class="num">Outstanding</th><th>Progress</th>
+    <th>Status</th><th>Source</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><a href="/review/invoices/{{ r.id }}">{{ r.invoice_number }}</a></td>
+    <td class="truncate" title="{{ r.payer_name or '' }}">{{ r.payer_name or "—" }}</td>
+    <td class="num">{{ r.amount|money(r.currency) }}</td>
+    <td class="num">{{ r.paid|money(r.currency) }}</td>
+    <td class="num">{% if r.awaiting_review %}{{ r.awaiting_review|money(r.currency) }}{% else %}—{% endif %}</td>
+    <td class="num">{{ r.outstanding|money(r.currency) }}</td>
+    <td><div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+             aria-valuenow="{{ r.progress_pct }}" aria-label="{{ r.progress_pct }}% paid">
+          <span style="width: {{ r.progress_pct }}%"></span></div></td>
+    <td>{% if r.status == "paid" %}<span class="badge ok">paid</span>
+        {% elif r.status == "overpaid" %}<span class="badge bad">overpaid</span>
+        {% elif r.status == "partially_paid" %}<span class="badge warn">partially paid</span>
+        {% else %}<span class="badge">open</span>{% endif %}</td>
+    <td>{% if r.source == "books" %}<span class="badge">your books</span>
+        {% else %}<span class="badge warn">unverified</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}

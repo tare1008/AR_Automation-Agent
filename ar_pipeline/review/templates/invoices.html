@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Invoices — AR Review by MLDeep Systems{% endblock %}
+{% block content %}
+<div class="masthead-row">
+  <h1>Invoices <small>— what's been paid against each invoice</small></h1>
+</div>
+<p class="lede">Balances count <strong>approved</strong> payments only. Amounts marked
+  <span class="badge warn">unverified</span> were learned from a payer's email; upload your open
+  invoices to replace them with the figures from your books.</p>
+
+<form method="post" action="/review/invoices/import" enctype="multipart/form-data" class="upload-bar">
+  <label for="invoiceCsv">Open invoices (CSV)</label>
+  <input type="file" id="invoiceCsv" name="file" accept=".csv,text/csv" required>
+  <button type="submit">Import open invoices</button>
+  <a href="/review/invoices/template.csv">Download a template</a>
+</form>
+
+{% if import_error %}<p class="import-result bad" role="alert">Import failed: {{ import_error }}</p>{% endif %}
+{% if result %}
+<div class="import-result" role="status">
+  <p><strong>Imported {{ result.imported }}</strong> &middot; updated {{ result.updated }} &middot;
+    {{ result.skipped|length }} row{{ "" if result.skipped|length == 1 else "s" }} skipped</p>
+  {% if result.skipped %}<ul>{% for s in result.skipped %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+
+<div id="invoices-live" data-poll-url="/review/invoices-rows{% if status %}?status={{ status }}{% endif %}" data-poll-interval="3500">
+  {% include "_invoices_rows.html" %}
+</div>
+{% endblock %}

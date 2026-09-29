@@ -6,9 +6,10 @@ import pathlib
 import re
 import uuid
 from collections.abc import Iterator
+from decimal import Decimal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -48,6 +49,15 @@ def get_db() -> Iterator[Session]:
 
 def _render(request: Request, name: str, /, **ctx: object) -> HTMLResponse:
     return templates.TemplateResponse(request, name, ctx)
+
+
+def _money_filter(value: object, currency: str = "INR") -> str:
+    from ar_pipeline.ledger.money import format_money
+
+    return format_money(Decimal(str(value)), currency)
+
+
+templates.env.filters["money"] = _money_filter
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -243,6 +253,94 @@ def approved_rows_fragment(
     if by == "auto":
         rows = [r for r in rows if r.reviewed_by == AUTO_REVIEWER]
     return _render(request, "_approved_rows.html", rows=rows, by=by)
+
+
+def _invoices_ctx(session: Session, status: str | None) -> dict[str, object]:
+    from ar_pipeline.ledger.queries import filter_rows, list_invoice_rows, summarize
+
+    rows = list_invoice_rows(session)
+    return {"rows": filter_rows(rows, status), "summary": summarize(rows), "status": status}
+
+
+@router.get("/invoices", response_class=HTMLResponse)
+def invoices_page(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    status = request.query_params.get("status")
+    return _render(
+        request,
+        "invoices.html",
+        user=user,
+        result=None,
+        import_error=None,
+        flash=request.query_params.get("flash"),
+        **_invoices_ctx(session, status),
+    )
+
+
+@router.get("/invoices-rows", response_class=HTMLResponse)
+def invoices_rows_fragment(
+    request: Request,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    status = request.query_params.get("status")
+    return _render(request, "_invoices_rows.html", **_invoices_ctx(session, status))
+
+
+@router.post("/invoices/import", response_class=HTMLResponse)
+async def invoices_import(
+    request: Request,
+    file: UploadFile = File(...),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.ledger.csv_import import MAX_BYTES, CsvImportError, import_open_invoices
+
+    data = await file.read(MAX_BYTES + 1)
+    result = error = None
+    try:
+        result = import_open_invoices(session, data)
+    except CsvImportError as exc:
+        error = str(exc)
+    # rendered, not redirected: the skipped-row list must be shown on the page
+    return _render(
+        request,
+        "invoices.html",
+        user=user,
+        result=result,
+        import_error=error,
+        flash=None,
+        **_invoices_ctx(session, None),
+    )
+
+
+@router.get("/invoices/template.csv")
+def invoices_template(user: User = Depends(require_user)) -> Response:
+    from ar_pipeline.ledger.csv_import import TEMPLATE_CSV
+
+    return Response(
+        TEMPLATE_CSV,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="open-invoices-template.csv"'},
+    )
+
+
+@router.get("/invoices/{invoice_id}", response_class=HTMLResponse)
+def invoice_detail_page(
+    request: Request,
+    invoice_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.ledger.queries import invoice_detail
+
+    detail = invoice_detail(session, invoice_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="not found")
+    return _render(request, "invoice_detail.html", user=user, d=detail, flash=None)
 
 
 @router.get("/errors", response_class=HTMLResponse)

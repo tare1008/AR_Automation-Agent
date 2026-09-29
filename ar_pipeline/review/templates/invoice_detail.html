@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set r = d.row %}
+{% block title %}{{ r.invoice_number }} — AR Review by MLDeep Systems{% endblock %}
+{% block content %}
+<p class="lede"><a href="/review/invoices">&larr; All invoices</a></p>
+<h1>{{ r.invoice_number }}
+  {% if r.source == "books" %}<span class="badge">your books</span>{% else %}<span class="badge warn">unverified</span>{% endif %}
+</h1>
+<p class="meta">{{ r.payer_name or "Payer not recorded" }} &middot; invoice {{ r.amount|money(r.currency) }}
+  &middot; paid {{ r.paid|money(r.currency) }} &middot; outstanding <strong>{{ r.outstanding|money(r.currency) }}</strong></p>
+<div class="progress progress-lg" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+     aria-valuenow="{{ r.progress_pct }}" aria-label="{{ r.progress_pct }}% paid"><span style="width: {{ r.progress_pct }}%"></span></div>
+{% if r.status == "overpaid" %}<p role="alert"><span class="badge bad">overpaid by {{ (0 - r.outstanding)|money(r.currency) }}</span></p>{% endif %}
+{% if d.note %}<p class="field-flag">{{ d.note }}</p>{% endif %}
+
+<h2>Payment history</h2>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Date</th><th>Reference</th><th class="num">Paid</th><th class="num">Deductions</th>
+    <th class="num">Settled</th><th class="num">Balance after</th><th></th></tr></thead>
+  <tbody>
+  {% if d.paid_before_import %}
+  <tr><td>—</td><td>Paid before import</td><td class="num">—</td><td class="num">—</td>
+    <td class="num">{{ d.paid_before_import|money(r.currency) }}</td>
+    <td class="num">{{ (r.amount - d.paid_before_import)|money(r.currency) }}</td><td></td></tr>
+  {% endif %}
+  {% for e in d.entries %}
+  <tr>
+    <td>{{ e.payment_date.strftime("%d %b %Y") if e.payment_date else "—" }}</td>
+    <td>{{ e.reference or "—" }}</td>
+    <td class="num">{{ e.amount_paid|money(r.currency) }}</td>
+    <td class="num">{{ e.deductions|money(r.currency) }}</td>
+    <td class="num">{{ e.settled|money(r.currency) }}{% if not e.applied %} <span class="badge warn">other currency — not counted</span>{% endif %}</td>
+    <td class="num">{% if e.balance_after < 0 %}<strong>{{ e.balance_after|money(r.currency) }} overpaid</strong>{% else %}{{ e.balance_after|money(r.currency) }}{% endif %}</td>
+    <td><a href="/review/email/{{ e.email_id }}">Email</a> &middot; <a href="/review/extraction/{{ e.extraction_id }}">JSON</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">No approved payments yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+{% if d.awaiting %}
+<h2>Awaiting review <small>— not counted in the balance</small></h2>
+<ul>
+  {% for a in d.awaiting %}
+  <li><a href="/review/{{ a.extraction_id }}">{{ a.subject }}</a> — {{ a.settled|money(r.currency) }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

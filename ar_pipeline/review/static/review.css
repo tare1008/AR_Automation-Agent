@@ -324,3 +324,14 @@ h1 .icon-btn { vertical-align: middle; margin-left: .4rem; }
 .bulk-bar .bulk-note { color: var(--text-muted); font-size: .8rem; flex-basis: 100%; }
 th.select-col, td.select-col { width: 2.5rem; text-align: center; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Invoices tab */
+.upload-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; margin: 0 0 1rem; }
+.upload-bar label { font-weight: 600; font-size: .9rem; }
+.import-result { border: 1px solid var(--border); background: var(--surface); border-radius: var(--radius); padding: .6rem .9rem; margin: 0 0 1rem; }
+.import-result.bad { border-color: var(--bad); color: var(--bad); }
+.import-result ul { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .85rem; color: var(--text-muted); }
+.progress { width: 7rem; height: .5rem; border-radius: 999px; background: var(--surface-muted); border: 1px solid var(--border); overflow: hidden; }
+.progress > span { display: block; height: 100%; background: var(--accent-fill); }
+.progress-lg { width: 100%; max-width: 32rem; height: .75rem; margin: .4rem 0 1rem; }
+.stat-tile.active { border-color: var(--brand); }

@@ -21,6 +21,7 @@
       <a href="/review" class="{{ 'active' if path == '/review' else '' }}">Journey</a>
       <a href="/review/queue" class="{{ 'active' if path == '/review/queue' else '' }}">Queue</a>
       <a href="/review/approved" class="{{ 'active' if path == '/review/approved' else '' }}">Approved</a>
+      <a href="/review/invoices" class="{{ 'active' if path.startswith('/review/invoices') else '' }}">Invoices</a>
       <a href="/review/errors" class="{{ 'active' if path == '/review/errors' else '' }}">Errors</a>
     </nav>
     <span class="topbar-right">
