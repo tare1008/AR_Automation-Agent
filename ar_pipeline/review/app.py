@@ -297,6 +297,7 @@ async def invoices_import(
     user: User = Depends(require_user),
     session: Session = Depends(get_db),
 ) -> Response:
+    from ar_pipeline.ledger.checks import refresh_pending_flags
     from ar_pipeline.ledger.csv_import import MAX_BYTES, CsvImportError, import_open_invoices
 
     data = await file.read(MAX_BYTES + 1)
@@ -305,6 +306,9 @@ async def invoices_import(
         result = import_open_invoices(session, data)
     except CsvImportError as exc:
         error = str(exc)
+    else:
+        # pending items were flagged against the old ledger; re-check them now
+        refresh_pending_flags(session)
     # rendered, not redirected: the skipped-row list must be shown on the page
     return _render(
         request,

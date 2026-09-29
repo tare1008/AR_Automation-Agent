@@ -143,3 +143,15 @@ def test_ledger_backfill_command(wired, capsys, monkeypatch):
 
     assert main(["ledger-backfill"]) == 0
     assert "3 payment line(s) posted from 2 approved extraction(s)" in capsys.readouterr().out
+
+
+def test_ledger_backfill_rechecks_pending_items(wired, capsys, monkeypatch):
+    monkeypatch.setattr("ar_pipeline.ledger.posting.backfill", lambda session: (0, 0))
+    monkeypatch.setattr("ar_pipeline.ledger.checks.refresh_pending_flags", lambda session: 4)
+
+    assert cli.main(["ledger-backfill"]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        "0 payment line(s) posted from 0 approved extraction(s)",
+        "4 pending item(s) re-checked",
+    ]

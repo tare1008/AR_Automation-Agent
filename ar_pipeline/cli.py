@@ -157,11 +157,13 @@ def _cmd_status() -> int:
 
 def _cmd_ledger_backfill() -> int:
     from ar_pipeline.db.base import get_session
-    from ar_pipeline.ledger import posting
+    from ar_pipeline.ledger import checks, posting
 
     with get_session() as session:
         extractions, rows = posting.backfill(session)
+        rechecked = checks.refresh_pending_flags(session)
     print(f"{rows} payment line(s) posted from {extractions} approved extraction(s)")
+    print(f"{rechecked} pending item(s) re-checked")
     return 0
 
 

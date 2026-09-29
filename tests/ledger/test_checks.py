@@ -173,3 +173,59 @@ def test_checking_twice_in_one_transaction_does_not_deadlock(db_session, make_in
             _flags(db_session, invoice_number="NEW-9", invoice_amount="100", amount_paid="100")
             == []
         )
+
+
+def test_refresh_replaces_an_old_format_flag(db_session, make_invoice, make_extraction):
+    from ar_pipeline.ledger.checks import refresh_pending_flags
+
+    make_invoice("INV-1", "100", source="email")
+    ext = make_extraction(invoice_amount="100", amount_paid="25")
+    ext.validation_flags = ["line 0: amount_paid + deductions != invoice_amount"]
+    db_session.flush()
+    assert refresh_pending_flags(db_session) == 1
+    (flag,) = ext.validation_flags
+    assert flag.startswith("line 0: INV-1 — partial payment ₹25.00 of ₹100.00")
+
+
+def test_refresh_clears_a_books_partial(db_session, make_invoice, make_extraction):
+    from ar_pipeline.ledger.checks import refresh_pending_flags
+
+    make_invoice("INV-1", "100")
+    ext = make_extraction(invoice_amount="100", amount_paid="25")
+    ext.validation_flags = ["line 0: INV-1 isn't in your open invoices"]
+    approved = make_extraction(status="approved", invoice_amount="100", amount_paid="25")
+    approved.validation_flags = ["line 0: stale"]
+    db_session.flush()
+    assert refresh_pending_flags(db_session) == 1
+    assert ext.validation_flags == []
+    assert approved.validation_flags == ["line 0: stale"]  # only pending items
+
+
+def test_refresh_is_zero_when_nothing_changes(db_session, make_invoice, make_extraction):
+    from ar_pipeline.ledger.checks import refresh_pending_flags
+
+    make_invoice("INV-1", "100")
+    make_extraction(invoice_amount="100", amount_paid="25")
+    assert refresh_pending_flags(db_session) == 0
+
+
+def test_refresh_skips_a_canonical_that_does_not_validate(db_session, make_extraction):
+    from ar_pipeline.ledger.checks import refresh_pending_flags
+
+    ext = make_extraction()
+    ext.canonical = {"header": {}, "line_items": "nope"}
+    ext.validation_flags = ["line 0: old"]
+    db_session.flush()
+    assert refresh_pending_flags(db_session) == 0
+    assert ext.validation_flags == ["line 0: old"]
+
+
+def test_refresh_keeps_skipped_draft_flags(db_session, make_invoice, make_extraction):
+    from ar_pipeline.ledger.checks import refresh_pending_flags
+
+    make_invoice("INV-1", "100")
+    ext = make_extraction(invoice_amount="100", amount_paid="25")
+    ext.validation_flags = ["line 0: old", "draft 1: schema validation failed: x"]
+    db_session.flush()
+    assert refresh_pending_flags(db_session) == 1
+    assert ext.validation_flags == ["draft 1: schema validation failed: x"]

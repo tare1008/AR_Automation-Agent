@@ -7,16 +7,24 @@ starts with ``line {i}: `` so the review screen pins it to that line.
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
+from pydantic import ValidationError
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from ar_pipeline.db.models import Invoice, InvoicePayment
+from ar_pipeline.db.models import Extraction, Invoice, InvoicePayment
 from ar_pipeline.ledger.balance import TOLERANCE, balance_for, status_for
 from ar_pipeline.ledger.matching import near_matches, number_key, payers_differ
 from ar_pipeline.ledger.money import format_money
+from ar_pipeline.normalize.validators import validate_payload
 from ar_pipeline.schema.canonical import RemittancePayload
+
+# "draft N: schema validation failed: …" flags come from the normalizer about
+# drafts that never became a payload, so re-validating the payload can't
+# reproduce them — keep them.
+_DRAFT_FLAG_RE = re.compile(r"^draft\s+\d+:")
 
 
 def _is_duplicate(session: Session, invoice: Invoice, reference: str, amount_paid: Decimal) -> bool:
@@ -122,3 +130,27 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
                 "outstanding; invoice amount comes from an email, not your books"
             )
     return flags
+
+
+def refresh_pending_flags(session: Session) -> int:
+    """Recompute the flags of every pending remittance against the current
+    ledger (after a CSV import or a backfill). Returns how many rows changed."""
+    changed = 0
+    pending = session.scalars(
+        select(Extraction).where(
+            Extraction.status == "pending_review", Extraction.is_remittance.is_(True)
+        )
+    )
+    for ext in pending:
+        try:
+            payload = RemittancePayload.model_validate(ext.canonical or {})
+        except ValidationError:
+            continue
+        old = list(ext.validation_flags or [])
+        kept = [f for f in old if _DRAFT_FLAG_RE.match(f)]
+        new = validate_payload(payload) + check_against_ledger(session, payload) + kept
+        if new != old:
+            ext.validation_flags = new
+            changed += 1
+    session.flush()
+    return changed

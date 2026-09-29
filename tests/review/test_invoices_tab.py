@@ -83,3 +83,16 @@ def test_requires_login():
 
     with TestClient(app, follow_redirects=False) as anon:
         assert anon.get("/review/invoices").status_code in (303, 401)
+
+
+def test_upload_rechecks_pending_items(client, db_session, seed_pending):
+    _, ext = seed_pending()
+    ext.validation_flags = ["line 0: INV-1 isn't in your open invoices"]
+    db_session.flush()
+    number = ext.canonical["line_items"][0]["invoice_number"]
+    amount = ext.canonical["line_items"][0]["invoice_amount"]
+    csv = f"invoice_number,payer_name,invoice_amount\n{number},Acme Corp,{amount}\n".encode()
+    r = client.post("/review/invoices/import", files={"file": ("open.csv", csv, "text/csv")})
+    assert r.status_code == 200
+    db_session.refresh(ext)
+    assert ext.validation_flags == []
