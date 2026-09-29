@@ -82,3 +82,44 @@ def test_too_many_rows(db_session):
 def test_not_utf8(db_session):
     with pytest.raises(CsvImportError, match="UTF-8"):
         import_open_invoices(db_session, HEADER.encode() + b"\xff\xfe\n")
+
+
+def _balance(db_session, number: str):
+    from ar_pipeline.ledger.balance import balance_for
+
+    inv = find_invoice(db_session, number)
+    db_session.refresh(inv)
+    return inv, balance_for(db_session, inv)
+
+
+def test_reimport_does_not_double_count_posted_payments(db_session, make_invoice, post_payment):
+    inv = make_invoice("INV-1", "100", source="email")
+    post_payment(inv, "25")
+    r = _run(db_session, "INV-1,Acme Corp,,100,INR,75\n")
+    assert (r.updated, r.skipped) == (1, [])
+    inv, bal = _balance(db_session, "INV-1")
+    assert inv.paid_before_import == Decimal("0.00")
+    assert (bal.paid, bal.outstanding, bal.status) == (
+        Decimal("25.00"),
+        Decimal("75.00"),
+        "partially_paid",
+    )
+
+
+def test_blank_outstanding_keeps_existing_paid_before_import(db_session, make_invoice):
+    make_invoice("INV-1", "100", paid_before_import="40")
+    r = _run(db_session, "INV-1,Acme Corp,,100,INR,\n")
+    assert r.updated == 1
+    inv, _ = _balance(db_session, "INV-1")
+    assert inv.paid_before_import == Decimal("40.00")
+
+
+def test_outstanding_net_of_posted_payments_sets_paid_before_import(
+    db_session, make_invoice, post_payment
+):
+    inv = make_invoice("INV-1", "100")
+    post_payment(inv, "25")
+    _run(db_session, "INV-1,Acme Corp,,100,INR,50\n")
+    inv, bal = _balance(db_session, "INV-1")
+    assert inv.paid_before_import == Decimal("25.00")
+    assert bal.paid == Decimal("50.00")

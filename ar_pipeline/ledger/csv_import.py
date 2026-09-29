@@ -15,9 +15,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ar_pipeline.db.models import Invoice
+from ar_pipeline.db.models import Invoice, InvoicePayment
 from ar_pipeline.ledger.balance import TOLERANCE
 from ar_pipeline.ledger.matching import number_key
 from ar_pipeline.ledger.money import format_money
@@ -96,6 +97,15 @@ def _parse(n: int, raw: dict[str, str]) -> _Row | str:
     return _Row(number, raw.get("payer_name") or None, invoice_date, amount, currency, outstanding)
 
 
+def _posted_settled(session: Session, invoice: Invoice, currency: str) -> Decimal:
+    total = session.scalar(
+        select(func.sum(InvoicePayment.settled)).where(
+            InvoicePayment.invoice_id == invoice.id, InvoicePayment.currency == currency
+        )
+    )
+    return Decimal(total or 0)
+
+
 def import_open_invoices(session: Session, data: bytes) -> ImportResult:
     if len(data) > MAX_BYTES:
         raise CsvImportError("the file is larger than 1 MB")
@@ -133,9 +143,11 @@ def import_open_invoices(session: Session, data: bytes) -> ImportResult:
         if counts[number_key(row.number)] > 1:
             result.skipped.append(f"row {n}: {row.number} appears more than once in the file")
             continue
-        paid_before = row.amount - row.outstanding if row.outstanding is not None else Decimal("0")
         existing = find_invoice(session, row.number)
         if existing is None:
+            paid_before = (
+                row.amount - row.outstanding if row.outstanding is not None else Decimal("0")
+            )
             session.add(
                 Invoice(
                     invoice_number=row.number,
@@ -161,7 +173,11 @@ def import_open_invoices(session: Session, data: bytes) -> ImportResult:
         existing.amount = row.amount
         existing.currency = row.currency
         existing.source = "books"
-        existing.paid_before_import = paid_before
+        if row.outstanding is not None:
+            # the export's outstanding already reflects payments this pipeline
+            # delivered, so only the remainder was paid outside it (spec §1).
+            posted = _posted_settled(session, existing, row.currency)
+            existing.paid_before_import = max(Decimal("0"), row.amount - row.outstanding - posted)
         result.updated += 1
 
     result.skipped.sort(key=lambda s: int(s.split()[1].rstrip(":")))
