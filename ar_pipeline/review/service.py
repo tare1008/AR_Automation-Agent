@@ -573,6 +573,32 @@ def save_edits(
     return edits
 
 
+def use_invoice(
+    session: Session, extraction_id: uuid.UUID, user: User, line_index: int, invoice_id: uuid.UUID
+) -> str:
+    """Reviewer picked a suggested invoice: rewrite that line's number through
+    the normal edit path so it's audited and the checks re-run."""
+    from ar_pipeline.db.models import Invoice
+
+    ext = _require_pending(session.get(Extraction, extraction_id))
+    invoice = session.get(Invoice, invoice_id)
+    if invoice is None:
+        raise ReviewError("that invoice no longer exists")
+    canonical = dict(ext.canonical) if isinstance(ext.canonical, dict) else {}
+    lines = [dict(li) for li in canonical.get("line_items") or []]
+    if not 0 <= line_index < len(lines):
+        raise ReviewError("no such line on this payment")
+    lines[line_index]["invoice_number"] = invoice.invoice_number
+    save_edits(
+        session,
+        extraction_id,
+        user,
+        {"header": canonical.get("header", {}), "line_items": lines},
+        approve=False,
+    )
+    return invoice.invoice_number
+
+
 def reprocess_email(session: Session, email_id: uuid.UUID) -> None:
     email = session.get(Email, email_id)
     if email is None:

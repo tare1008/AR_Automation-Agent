@@ -155,3 +155,57 @@ def invoice_detail(session: Session, invoice_id: uuid.UUID) -> InvoiceDetail | N
             if number_key(str(line.get("invoice_number") or "")) == inv.number_key:
                 awaiting.append(AwaitingEntry(ext.id, subject, line_settled(line)))
     return InvoiceDetail(row, inv.note, Decimal(inv.paid_before_import or 0), entries, awaiting)
+
+
+@dataclass(frozen=True)
+class LineLedger:
+    invoice_number: str
+    currency: str
+    invoice_id: uuid.UUID | None
+    source: str | None
+    amount: Decimal | None
+    paid: Decimal | None
+    outstanding: Decimal | None
+    after_this: Decimal | None
+    awaiting_elsewhere: Decimal
+    suggestions: list[tuple[uuid.UUID, str]]
+
+
+def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
+    from ar_pipeline.ledger.matching import near_matches
+
+    canonical = extraction.canonical or {}
+    header = canonical.get("header") or {}
+    currency = str(header.get("currency") or "INR")
+    awaiting = awaiting_by_key(session, exclude=extraction.id)
+    every_invoice: list[Invoice] | None = None
+    out: list[LineLedger] = []
+    for line in canonical.get("line_items") or []:
+        number = str(line.get("invoice_number") or "")
+        key = number_key(number)
+        invoice = session.scalar(select(Invoice).where(Invoice.number_key == key)) if key else None
+        if invoice is None:
+            suggestions: list[tuple[uuid.UUID, str]] = []
+            if key:
+                if every_invoice is None:
+                    every_invoice = list(session.scalars(select(Invoice)))
+                suggestions = [
+                    (inv.id, inv.invoice_number)
+                    for inv in near_matches(number, every_invoice, header.get("payer_name"))
+                ]
+            out.append(
+                LineLedger(
+                    number, currency, None, None, None, None, None, None,
+                    awaiting.get(key, _ZERO), suggestions,
+                )
+            )
+            continue
+        bal = balances(session, [invoice])[0]
+        out.append(
+            LineLedger(
+                invoice.invoice_number, invoice.currency, invoice.id, invoice.source,
+                Decimal(invoice.amount), bal.paid, bal.outstanding,
+                bal.outstanding - line_settled(line), awaiting.get(key, _ZERO), [],
+            )
+        )
+    return out

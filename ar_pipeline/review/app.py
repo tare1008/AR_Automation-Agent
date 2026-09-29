@@ -505,6 +505,25 @@ def skip_action(
     return RedirectResponse(f"/review/{next_id}", status_code=303)
 
 
+@router.post("/{extraction_id}/use-invoice")
+def use_invoice_action(
+    extraction_id: uuid.UUID,
+    line_index: int = Form(...),
+    invoice_id: uuid.UUID = Form(...),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, use_invoice
+
+    try:
+        number = use_invoice(session, extraction_id, user, line_index, invoice_id)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse(
+        f"/review/{extraction_id}?flash={quote(f'Using {number}')}", status_code=303
+    )
+
+
 @router.post("/{extraction_id}/reprocess")
 def reprocess_action(
     extraction_id: uuid.UUID,
@@ -530,6 +549,7 @@ def detail_page(
 ) -> Response:
     import nh3
 
+    from ar_pipeline.ledger.queries import line_ledgers
     from ar_pipeline.review.service import ReviewError, classify_flags, load_detail
 
     try:
@@ -548,6 +568,7 @@ def detail_page(
         flash=request.query_params.get("flash"),
         auto_approve_threshold=get_settings().auto_approve_min_confidence,
         flag_groups=classify_flags(view.extraction.validation_flags or []),
+        line_ledgers=line_ledgers(session, view.extraction),
     )
 
 

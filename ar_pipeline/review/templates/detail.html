@@ -92,6 +92,26 @@
         <fieldset class="lineitem{% if this_line_flags %} flagged{% endif %}" data-index="{{ li_idx }}">
           <legend>Line {{ li_idx }}</legend>
           {% for lf in this_line_flags %}<p class="field-flag">{{ lf.text }}</p>{% endfor %}
+          {% set led = line_ledgers[li_idx] if line_ledgers and li_idx < line_ledgers|length else none %}
+          {% if led %}
+          <div class="ledger-strip">
+            {% if led.invoice_id %}
+              <a href="/review/invoices/{{ led.invoice_id }}">{{ led.invoice_number }}</a>
+              &middot; {{ "your books" if led.source == "books" else "unverified" }} {{ led.amount|money(led.currency) }}
+              &middot; paid {{ led.paid|money(led.currency) }}
+              &middot; outstanding {{ led.outstanding|money(led.currency) }}
+              &middot; <strong>after this payment {{ led.after_this|money(led.currency) }}</strong>
+            {% elif led.suggestions %}
+              Not in the ledger. Did you mean:
+              {% for inv_id, inv_number in led.suggestions %}
+              <button type="submit" form="useInvoice{{ li_idx }}_{{ loop.index0 }}" class="btn-quiet">Use {{ inv_number }}</button>
+              {% endfor %}
+            {% else %}
+              New invoice — not in the ledger yet.
+            {% endif %}
+            {% if led.awaiting_elsewhere %}<span class="ledger-note">{{ led.awaiting_elsewhere|money(led.currency) }} more awaiting review on this invoice</span>{% endif %}
+          </div>
+          {% endif %}
           {% for f in ["invoice_number","invoice_date","invoice_amount","amount_paid"] %}
           <label>{{ f }}
             <input type="text" name="line_items[{{ li_idx }}].{{ f }}"
@@ -118,6 +138,15 @@
       </div>
       <p class="lede" style="margin-top:.4rem">Save &amp; Approve sends this payload to the backend immediately.</p>
     </form>
+
+    {% for led in line_ledgers or [] %}{% set li_idx = loop.index0 %}
+      {% for inv_id, inv_number in led.suggestions %}
+      <form method="post" action="/review/{{ view.extraction.id }}/use-invoice" id="useInvoice{{ li_idx }}_{{ loop.index0 }}" hidden>
+        <input type="hidden" name="line_index" value="{{ li_idx }}">
+        <input type="hidden" name="invoice_id" value="{{ inv_id }}">
+      </form>
+      {% endfor %}
+    {% endfor %}
 
     <form method="post" action="/review/{{ view.extraction.id }}/reject" class="stack">
       <label>Reject reason <input type="text" name="reason" required></label>
