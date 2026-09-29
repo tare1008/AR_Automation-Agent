@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ar_pipeline.db.models import Invoice, InvoicePayment
-from ar_pipeline.ledger.balance import TOLERANCE, balance_for
+from ar_pipeline.ledger.balance import TOLERANCE, balance_for, status_for
 from ar_pipeline.ledger.matching import near_matches, number_key, payers_differ
 from ar_pipeline.ledger.money import format_money
 from ar_pipeline.schema.canonical import RemittancePayload
@@ -42,6 +42,9 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
     ) > 0
     every_invoice: list[Invoice] | None = None
     flags: list[str] = []
+    # Σ settled by earlier lines of this payment, per number key (two lines for
+    # "INV-1" and "INV 1" must not each pass against the full outstanding).
+    earlier: dict[str, Decimal] = {}
 
     for i, line in enumerate(payload.line_items):
         if not number_key(line.invoice_number):
@@ -51,11 +54,14 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
         # the line only claims an invoice total when that total differs from what it
         # settles; an equal pair just describes the payment (spec §2 "Stated vs settled").
         states_total = abs(line.invoice_amount - settled) > TOLERANCE
-        invoice = session.scalar(
-            select(Invoice).where(Invoice.number_key == number_key(line.invoice_number))
-        )
+        key = number_key(line.invoice_number)
+        # serialize check-then-post per invoice across concurrent approvals: row
+        # lock on the invoice, or an advisory lock on the key while it doesn't
+        # exist yet. Both release at commit/rollback (spec §2 "Re-check at approval").
+        invoice = session.scalar(select(Invoice).where(Invoice.number_key == key).with_for_update())
 
         if invoice is None:
+            session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": key})
             if every_invoice is None:
                 every_invoice = list(session.scalars(select(Invoice)))
             near = near_matches(line.invoice_number, every_invoice, header.payer_name)
@@ -100,16 +106,19 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
                 f"{money(line.amount_paid)} was already approved"
             )
         bal = balance_for(session, invoice)
-        if bal.status in ("paid", "overpaid"):
+        before = earlier.get(key, Decimal("0"))
+        earlier[key] = before + settled
+        outstanding = bal.outstanding - before
+        if status_for(invoice.amount, bal.paid + before) in ("paid", "overpaid"):
             flags.append(f"{label} is already fully paid")
-        elif settled > bal.outstanding + TOLERANCE:
+        elif settled > outstanding + TOLERANCE:
             flags.append(
-                f"{label} — pays {money(settled)} but only {money(bal.outstanding)} "
-                f"outstanding; overpaid by {money(settled - bal.outstanding)}"
+                f"{label} — pays {money(settled)} but only {money(outstanding)} "
+                f"outstanding; overpaid by {money(settled - outstanding)}"
             )
-        elif settled < bal.outstanding - TOLERANCE and invoice.source == "email":
+        elif settled < outstanding - TOLERANCE and invoice.source == "email":
             flags.append(
-                f"{label} — partial payment {money(settled)} of {money(bal.outstanding)} "
+                f"{label} — partial payment {money(settled)} of {money(outstanding)} "
                 "outstanding; invoice amount comes from an email, not your books"
             )
     return flags

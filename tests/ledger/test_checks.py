@@ -111,3 +111,65 @@ def test_email_only_invoices_do_not_trigger_not_in_books(db_session, make_invoic
     assert (
         _flags(db_session, invoice_number="INV-9999", invoice_amount="100", amount_paid="100") == []
     )
+
+
+def _two_line_payload(first: str, second: str, *, number2: str = "INV 1") -> RemittancePayload:
+    canon = canonical_for(invoice_amount="100", amount_paid=first)
+    extra = dict(canon["line_items"][0], invoice_number=number2, amount_paid=second)
+    extra["invoice_amount"] = "100"
+    canon["line_items"].append(extra)
+    return RemittancePayload.model_validate(canon)
+
+
+def test_lines_sharing_a_key_are_checked_against_the_running_outstanding(db_session, make_invoice):
+    make_invoice("INV-1", "100")
+    flags = check_against_ledger(db_session, _two_line_payload("60", "50"))
+    assert flags == ["line 1: INV 1 — pays ₹50.00 but only ₹40.00 outstanding; overpaid by ₹10.00"]
+
+
+def test_second_line_after_a_full_first_line_is_already_paid(db_session, make_invoice):
+    make_invoice("INV-1", "100")
+    flags = check_against_ledger(db_session, _two_line_payload("100", "50"))
+    assert flags == ["line 1: INV 1 is already fully paid"]
+
+
+def _capture_sql(db_session):
+    from sqlalchemy import event
+
+    statements: list[str] = []
+
+    def _before(conn, cursor, statement, params, context, executemany):
+        statements.append(statement)
+
+    engine = db_session.get_bind()
+    event.listen(engine, "before_cursor_execute", _before)
+    return statements, lambda: event.remove(engine, "before_cursor_execute", _before)
+
+
+def test_matched_invoice_is_row_locked(db_session, make_invoice):
+    make_invoice("INV-1", "100")
+    statements, stop = _capture_sql(db_session)
+    try:
+        _flags(db_session, invoice_amount="100", amount_paid="25")
+    finally:
+        stop()
+    assert any("FOR UPDATE" in s and "invoice" in s for s in statements)
+
+
+def test_unknown_invoice_takes_an_advisory_lock_on_the_key(db_session):
+    statements, stop = _capture_sql(db_session)
+    try:
+        _flags(db_session, invoice_number="NEW-9", invoice_amount="100", amount_paid="100")
+    finally:
+        stop()
+    assert any("pg_advisory_xact_lock" in s for s in statements)
+
+
+def test_checking_twice_in_one_transaction_does_not_deadlock(db_session, make_invoice):
+    make_invoice("INV-1", "100", source="email")
+    for _ in range(2):
+        assert _flags(db_session, invoice_amount="100", amount_paid="100") == []
+        assert (
+            _flags(db_session, invoice_number="NEW-9", invoice_amount="100", amount_paid="100")
+            == []
+        )
