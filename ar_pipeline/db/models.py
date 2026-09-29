@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     ARRAY,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -34,6 +35,7 @@ EMAIL_STATUSES = (
 )
 EXTRACTION_STATUSES = ("pending_review", "approved", "rejected", "superseded")
 DELIVERY_STATUSES = ("pending", "delivered", "failed")
+INVOICE_SOURCES = ("books", "email")
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -188,3 +190,61 @@ class Vendor(Base):
     format_hint: Mapped[str | None] = mapped_column(Text)
     column_hints: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSONB), default=dict)
     active: Mapped[bool] = mapped_column(default=True)
+
+
+class Invoice(Base):
+    """One invoice in the client's books — from their CSV (``books``) or first
+    seen in an approved remittance (``email``, shown as unverified)."""
+
+    __tablename__ = "invoice"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invoice_number: Mapped[str] = mapped_column(Text)
+    number_key: Mapped[str] = mapped_column(Text)
+    payer_name: Mapped[str | None] = mapped_column(Text)
+    invoice_date: Mapped[date | None] = mapped_column(Date)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(3), default="INR")
+    source: Mapped[str] = mapped_column(String(10))
+    paid_before_import: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("number_key", name="uq_invoice_number_key"),
+        CheckConstraint(_in("source", INVOICE_SOURCES), name="ck_invoice_source"),
+    )
+
+
+class InvoicePayment(Base):
+    """One approved line item applied to an invoice. Written only at approval;
+    never deleted (there is no un-approve path)."""
+
+    __tablename__ = "invoice_payment"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invoice_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("invoice.id"), index=True)
+    extraction_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("extraction.id"), index=True
+    )
+    line_index: Mapped[int] = mapped_column(Integer)
+    amount_paid: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    deductions_total: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    settled: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(3))
+    payment_reference: Mapped[str | None] = mapped_column(Text)
+    payment_date: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "extraction_id", "line_index", name="uq_invoice_payment_extraction_line"
+        ),
+    )
