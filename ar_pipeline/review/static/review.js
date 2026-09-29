@@ -67,6 +67,10 @@
     var interval = parseInt(container.dataset.pollInterval, 10) || 3500;
     setInterval(function () {
       if (document.hidden) return;
+      // Don't swap the list out from under someone mid-selection (bulk
+      // reject checkboxes) or mid-typing — resume once they're done.
+      if (container.querySelector("input:checked")) return;
+      if (container.contains(document.activeElement)) return;
       fetch(url, { headers: { "X-Requested-With": "fetch" } })
         .then(function (resp) { return resp.ok ? resp.text() : null; })
         .then(function (html) {
@@ -78,4 +82,20 @@
         });
     }, interval);
   });
+
+  // Poll-now is a real, synchronous mailbox + LLM round trip — it can take
+  // real time. Show it's working immediately on submit rather than leaving
+  // the button looking inert until the page navigates away.
+  var pollNowForm = document.getElementById("pollNowForm");
+  if (pollNowForm) {
+    pollNowForm.addEventListener("submit", function () {
+      var btn = document.getElementById("pollNowBtn");
+      if (!btn) return;
+      btn.classList.add("is-loading");
+      var spinner = btn.querySelector(".spinner");
+      var label = btn.querySelector(".label");
+      if (spinner) spinner.hidden = false;
+      if (label) label.textContent = "Running…";
+    });
+  }
 })();

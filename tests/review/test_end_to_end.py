@@ -66,7 +66,7 @@ def test_fixture_flows_through_review_to_delivery(client, db_session, tmp_path):
         },
     )
     assert r.status_code == 303
-    assert r.headers["location"] == "/review?flash=Approved"
+    assert r.headers["location"].startswith("/review/queue?flash=Approved")
 
     db_session.expire_all()
     ext = db_session.get(Extraction, ext.id)

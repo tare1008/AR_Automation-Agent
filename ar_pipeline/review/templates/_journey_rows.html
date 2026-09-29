@@ -34,6 +34,7 @@
         <span class="primary truncate">{{ r.subject }}</span>
         <span class="secondary truncate">{{ r.sender_address }}
           {%- if r.attachment_count %} &middot; {{ r.attachment_count }} attachment{{ "s" if r.attachment_count != 1 else "" }}{% endif %}</span>
+        {% if r.skipped_attachment_count %}<span class="skipped-note">{{ r.skipped_attachment_count }} attachment{{ "s" if r.skipped_attachment_count != 1 else "" }} not read</span>{% endif %}
       </a>
     </td>
     <td>

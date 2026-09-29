@@ -37,6 +37,23 @@ log = logging.getLogger(__name__)
 _ZERO = Decimal("0")
 _ONE = Decimal("1")
 
+_UNKNOWN_CURRENCY = "XXX"
+# Bare "$" is ambiguous (USD/SGD/AUD/CAD...) — USD is the likely one here, and
+# any non-INR code is flagged for review anyway, so a reviewer can correct it.
+_CURRENCY_ALIASES = {
+    "$": "USD",
+    "us$": "USD",
+    "usd$": "USD",
+    "€": "EUR",
+    "£": "GBP",
+    "₹": "INR",
+    "rs": "INR",
+    "rs.": "INR",
+    "inr": "INR",
+    "rupee": "INR",
+    "rupees": "INR",
+}
+
 
 class PaymentDraft(BaseModel):
     """The LLM's per-payment output — everything except the envelope we own."""
@@ -59,12 +76,21 @@ class PaymentDraft(BaseModel):
     @field_validator("currency", mode="before")
     @classmethod
     def _currency_fallback(cls, v: object) -> str:
-        # Losing a whole payment over a malformed currency ("Rupees") is wrong;
-        # the canonical Header only accepts a 3-letter code, so fall back to INR
-        # and let validator check 7 flag any genuine non-INR payment instead.
-        if isinstance(v, str) and re.fullmatch(r"[A-Za-z]{3}", v):
-            return v
-        return "INR"
+        # Losing a whole payment over a malformed currency is wrong, but so is
+        # silently booking it as INR — a "$5,000" wire recorded as ₹5,000 would
+        # pass every other check. Known symbols map to their code; anything we
+        # can't place becomes XXX (ISO "no currency"), which validator check 7
+        # flags as non-INR, so a human sees it. Blank still means INR.
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "INR"
+        if not isinstance(v, str):
+            return _UNKNOWN_CURRENCY
+        key = v.strip().lower()
+        if key in _CURRENCY_ALIASES:
+            return _CURRENCY_ALIASES[key]
+        if re.fullmatch(r"[a-z]{3}", key):
+            return key.upper()
+        return _UNKNOWN_CURRENCY
 
 
 class NormalizerOutput(BaseModel):

@@ -43,6 +43,7 @@ class QueueRow:
     sender_address: str
     received_at: datetime
     payment_index: int
+    is_multi_payment: bool
     is_remittance: bool
     confidence: Decimal | None
     validation_flags: list[str]
@@ -55,6 +56,23 @@ class DetailView:
     attachments: list[Attachment]
     raw_extractions: list[dict]
     edits: list[ExtractionEdit]
+    skipped_attachments: dict[str, str]
+
+
+def _skipped_attachments(session: Session, email_ids: set[uuid.UUID]) -> dict[str, str]:
+    """attachment id -> why the classifier chose not to read it. Without
+    surfacing this, a wrongly skipped attachment is invisible to the reviewer
+    — its content never reached the model, so no later check can flag it."""
+    if not email_ids:
+        return {}
+    rows = session.execute(
+        select(ExtractionSource.ref, ExtractionSource.skip_reason).where(
+            ExtractionSource.email_id.in_(email_ids),
+            ExtractionSource.skipped.is_(True),
+            ExtractionSource.ref != "body",
+        )
+    ).all()
+    return {ref: reason or "skipped" for ref, reason in rows}
 
 
 @dataclass(frozen=True)
@@ -74,6 +92,7 @@ class JourneyRow:
     sender_address: str
     received_at: datetime
     attachment_count: int
+    skipped_attachment_count: int
     stage: str
     error_detail: str | None
     extractions: list[JourneyExtraction]
@@ -141,6 +160,7 @@ class EmailView:
     attachments: list[Attachment]
     stage: str
     extractions: list[EmailExtractionSummary]
+    skipped_attachments: dict[str, str]
 
 
 def load_email_view(session: Session, email_id: uuid.UUID) -> EmailView:
@@ -175,6 +195,7 @@ def load_email_view(session: Session, email_id: uuid.UUID) -> EmailView:
         attachments=attachments,
         stage=_STAGE_LABELS.get(email.status, email.status),
         extractions=extractions,
+        skipped_attachments=_skipped_attachments(session, {email.id}),
     )
 
 
@@ -193,6 +214,14 @@ def list_journey(session: Session) -> list[JourneyRow]:
     delivery_status_by_extraction: dict[uuid.UUID, str] = {}
     for extraction_id, status in session.execute(select(Delivery.extraction_id, Delivery.status)):
         delivery_status_by_extraction[extraction_id] = status
+
+    skipped_count_by_email: dict[uuid.UUID, int] = {}
+    for email_id, count in session.execute(
+        select(ExtractionSource.email_id, func.count())
+        .where(ExtractionSource.skipped.is_(True), ExtractionSource.ref != "body")
+        .group_by(ExtractionSource.email_id)
+    ):
+        skipped_count_by_email[email_id] = count
 
     out: list[JourneyRow] = []
     for email, attachment_count in email_rows:
@@ -217,6 +246,7 @@ def list_journey(session: Session) -> list[JourneyRow]:
                 sender_address=email.sender_address,
                 received_at=email.received_at,
                 attachment_count=attachment_count,
+                skipped_attachment_count=skipped_count_by_email.get(email.id, 0),
                 stage=_STAGE_LABELS.get(email.status, email.status),
                 error_detail=email.error_detail,
                 extractions=exts,
@@ -232,6 +262,7 @@ class ApprovedRow:
     subject: str
     sender_address: str
     payment_index: int
+    is_multi_payment: bool
     reviewed_by: str | None
     reviewed_at: datetime | None
     confidence: Decimal | None
@@ -239,6 +270,20 @@ class ApprovedRow:
     currency: str | None
     total_paid_amount: str | None
     delivery: str
+
+
+def _multi_payment_email_ids(session: Session, email_ids: set[uuid.UUID]) -> set[uuid.UUID]:
+    """Which of these emails have more than one payment total (any status) —
+    the payment number is only meaningful noise-free context once there's a
+    second payment on the same email to tell apart from the first."""
+    if not email_ids:
+        return set()
+    counts = session.execute(
+        select(Extraction.email_id, func.count())
+        .where(Extraction.email_id.in_(email_ids))
+        .group_by(Extraction.email_id)
+    ).all()
+    return {email_id for email_id, count in counts if count > 1}
 
 
 def list_approved(session: Session) -> list[ApprovedRow]:
@@ -255,6 +300,8 @@ def list_approved(session: Session) -> list[ApprovedRow]:
     for extraction_id, status in session.execute(select(Delivery.extraction_id, Delivery.status)):
         delivery_status_by_extraction[extraction_id] = status
 
+    multi = _multi_payment_email_ids(session, {email.id for _, email in rows})
+
     out: list[ApprovedRow] = []
     for ext, email in rows:
         canonical = ext.canonical if isinstance(ext.canonical, dict) else None
@@ -270,6 +317,7 @@ def list_approved(session: Session) -> list[ApprovedRow]:
                 subject=email.subject,
                 sender_address=email.sender_address,
                 payment_index=int(idx) if isinstance(idx, int) else 0,
+                is_multi_payment=email.id in multi,
                 reviewed_by=ext.reviewed_by,
                 reviewed_at=ext.reviewed_at,
                 confidence=ext.confidence,
@@ -282,13 +330,76 @@ def list_approved(session: Session) -> list[ApprovedRow]:
     return out
 
 
+# One order shared by the queue page and by approve->next / skip, so "next"
+# always means the row below this one on screen. created_at can't be the
+# tiebreak: it's Postgres now(), identical for every payment written in the
+# same transaction — i.e. for all payments of one email.
+_QUEUE_ORDER = (
+    Email.received_at.asc(),
+    Email.id.asc(),
+    Extraction.canonical["envelope"]["payment_index"].as_integer().asc(),
+    Extraction.id.asc(),
+)
+
+
+def _pending_ids(session: Session) -> list[uuid.UUID]:
+    return list(
+        session.scalars(
+            select(Extraction.id)
+            .join(Email, Extraction.email_id == Email.id)
+            .where(Extraction.status == "pending_review")
+            .order_by(*_QUEUE_ORDER)
+        )
+    )
+
+
+def next_pending_after(session: Session, current: uuid.UUID) -> uuid.UUID | None:
+    """The queue item after ``current``, wrapping to the top; never ``current``
+    itself. If ``current`` is no longer pending, the top of the queue."""
+    ids = _pending_ids(session)
+    if current not in ids:
+        return ids[0] if ids else None
+    i = ids.index(current)
+    rest = ids[i + 1 :] + ids[:i]
+    return rest[0] if rest else None
+
+
+def resolve_next(session: Session, planned: uuid.UUID | None) -> tuple[uuid.UUID | None, int]:
+    """After an action: ``planned`` (chosen before acting, to keep the
+    reviewer's place) if it's still pending, else the top of the queue —
+    plus how many items remain."""
+    ids = _pending_ids(session)
+    if planned in ids:
+        return planned, len(ids)
+    return (ids[0] if ids else None), len(ids)
+
+
+def bulk_reject_not_remittance(
+    session: Session, extraction_ids: list[uuid.UUID], user: User, reason: str
+) -> int:
+    """Reject the given items — but only ones the model already classified as
+    not a remittance. A real remittance is never rejected unseen, even if its
+    id is posted. Returns how many were rejected."""
+    if reason.strip() == "":
+        raise ReviewError("a rejection reason is required")
+    rejected = 0
+    for ext_id in extraction_ids:
+        ext = session.get(Extraction, ext_id)
+        if ext is None or ext.status != "pending_review" or ext.is_remittance:
+            continue
+        reject_extraction(session, ext.id, user, reason)
+        rejected += 1
+    return rejected
+
+
 def list_pending(session: Session) -> list[QueueRow]:
     rows = session.execute(
         select(Extraction, Email)
         .join(Email, Extraction.email_id == Email.id)
         .where(Extraction.status == "pending_review")
-        .order_by(Email.received_at.asc(), Extraction.created_at.asc())
+        .order_by(*_QUEUE_ORDER)
     ).all()
+    multi = _multi_payment_email_ids(session, {email.id for _, email in rows})
     out: list[QueueRow] = []
     for ext, email in rows:
         env = ext.canonical.get("envelope") if isinstance(ext.canonical, dict) else None
@@ -301,6 +412,7 @@ def list_pending(session: Session) -> list[QueueRow]:
                 sender_address=email.sender_address,
                 received_at=email.received_at,
                 payment_index=int(idx) if isinstance(idx, int) else 0,
+                is_multi_payment=email.id in multi,
                 is_remittance=ext.is_remittance,
                 confidence=ext.confidence,
                 validation_flags=list(ext.validation_flags or []),
@@ -331,7 +443,14 @@ def load_detail(session: Session, extraction_id: uuid.UUID) -> DetailView:
             .order_by(ExtractionEdit.edited_at.asc())
         )
     )
-    return DetailView(ext, email, attachments, [dict(r) for r in raws], edits)
+    return DetailView(
+        ext,
+        email,
+        attachments,
+        [dict(r) for r in raws],
+        edits,
+        _skipped_attachments(session, {email.id}),
+    )
 
 
 _HEADER_FLAG_RE = re.compile(r"^header:\s*(.+)$", re.I)

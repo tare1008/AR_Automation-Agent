@@ -3,6 +3,8 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
+import pytest
+
 from ar_pipeline.normalize.normalizer import (
     NormalizerOutput,
     PaymentDraft,
@@ -49,9 +51,13 @@ def _call(out: NormalizerOutput, email_id: str = "em-1") -> tuple[NormalizerOutp
     )
 
 
-def test_prompt_version_is_two() -> None:
-    assert PROMPT_VERSION == "2"
+def test_prompt_version_is_three() -> None:
+    assert PROMPT_VERSION == "3"
     assert isinstance(SYSTEM_PROMPT, str) and len(SYSTEM_PROMPT) > 200
+
+
+def test_prompt_requires_iso_currency_codes() -> None:
+    assert "ISO 4217" in SYSTEM_PROMPT
 
 
 def test_single_reconciling_payment() -> None:
@@ -127,6 +133,43 @@ def test_malformed_currency_falls_back_to_inr_keeps_payment() -> None:
     out, results = _call(NormalizerOutput(is_remittance=True, payments=[_draft(currency="Rupees")]))
     assert len(results) == 1
     assert results[0].payload.header.currency == "INR"
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("$", "USD"),
+        ("US$", "USD"),
+        ("€", "EUR"),
+        ("£", "GBP"),
+        ("₹", "INR"),
+        ("Rs", "INR"),
+        ("Rs.", "INR"),
+        ("usd", "USD"),
+        ("", "INR"),
+        (None, "INR"),
+    ],
+)
+def test_currency_symbols_map_to_iso_codes(raw, expected) -> None:
+    assert PaymentDraft(payer_name="x", total_paid_amount=Decimal("1"), currency=raw).currency == (
+        expected
+    )
+
+
+def test_unrecognized_currency_is_flagged_never_silently_inr() -> None:
+    # A symbol we can't place must reach a human — silently booking it as
+    # INR would record e.g. a foreign-currency wire at the wrong value.
+    assert PaymentDraft(payer_name="x", total_paid_amount=Decimal("1"), currency="¥").currency == (
+        "XXX"
+    )
+    out, results = _call(NormalizerOutput(is_remittance=True, payments=[_draft(currency="¥")]))
+    assert "non-INR currency: XXX" in results[0].validation_flags
+
+
+def test_dollar_symbol_payment_is_flagged_not_booked_as_inr() -> None:
+    out, results = _call(NormalizerOutput(is_remittance=True, payments=[_draft(currency="$")]))
+    assert results[0].payload.header.currency == "USD"
+    assert "non-INR currency: USD" in results[0].validation_flags
 
 
 def test_nan_confidence_clamps_to_zero() -> None:

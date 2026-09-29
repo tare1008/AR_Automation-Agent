@@ -48,6 +48,50 @@ def test_approved_page_shows_auto_and_human_approvals(client, db_session, seed_p
     assert f"/review/extraction/{auto_ext.id}" in r.text
 
 
+def test_approved_page_hides_payment_number_for_a_single_payment_email(
+    client, db_session, seed_pending
+):
+    from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue
+
+    _email, ext = seed_pending()
+    approve_and_queue(db_session, ext, reviewed_by=AUTO_REVIEWER)
+    db_session.flush()
+
+    r = client.get("/review/approved")
+    assert "#0" not in r.text
+
+
+def test_approved_page_shows_payment_number_for_a_multi_payment_email(
+    client, db_session, seed_pending
+):
+    from decimal import Decimal
+
+    from ar_pipeline.db.models import Extraction
+    from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue
+    from tests.review.conftest import _canonical
+
+    email, ext = seed_pending(canonical=_canonical(payment_index=0))
+    second = Extraction(
+        email_id=email.id,
+        canonical=_canonical(payment_index=1),
+        confidence=Decimal("0.7"),
+        is_remittance=True,
+        validation_flags=[],
+        llm_model="claude-opus-5",
+        prompt_version="2",
+        status="pending_review",
+    )
+    db_session.add(second)
+    db_session.flush()
+    approve_and_queue(db_session, ext, reviewed_by=AUTO_REVIEWER)
+    approve_and_queue(db_session, second, reviewed_by=AUTO_REVIEWER)
+    db_session.flush()
+
+    r = client.get("/review/approved")
+    assert "#0" in r.text
+    assert "#1" in r.text
+
+
 def test_approved_page_excludes_pending_and_rejected(client, db_session, seed_pending):
     from ar_pipeline.review.auth import User
     from ar_pipeline.review.service import reject_extraction

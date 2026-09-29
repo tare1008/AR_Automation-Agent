@@ -226,6 +226,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .cell-stack { display: flex; flex-direction: column; gap: .2rem; }
 .cell-stack .primary { color: var(--text); font-weight: 600; }
 .cell-stack .secondary { color: var(--text-muted); font-size: .8rem; }
+.cell-stack .skipped-note { color: var(--warn); font-size: .8rem; font-weight: 600; }
 /* A cell-stack that is itself the clickable target (e.g. "open this
    email") stays styled like plain cell content, not an underlined link —
    the row hover and a subtle primary-line color shift are the affordance. */
@@ -269,6 +270,18 @@ a.stat-tile:hover { border-color: var(--border-strong); box-shadow: var(--shadow
 @keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .badge.in-progress { animation: none; } }
 
+/* A button that kicks off a slow synchronous action (poll-now can take real
+   time — a live mailbox call plus an LLM call) shows it's working rather
+   than sitting inert while the browser waits on the page navigation. */
+.spinner {
+  width: .85rem; height: .85rem; border-radius: 50%; flex: 0 0 auto;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; border-top-color: currentColor; } }
+button.is-loading { opacity: .7; cursor: progress; pointer-events: none; }
+
 .detail { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
 .pane { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; overflow: auto; max-height: 80vh; background: var(--surface); box-shadow: var(--shadow-sm); }
 iframe.original { width: 100%; height: 50vh; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
@@ -304,3 +317,10 @@ h1 .icon-btn { vertical-align: middle; margin-left: .4rem; }
   .detail { grid-template-columns: 1fr; }
   main { padding: 1rem; }
 }
+
+/* Bulk reject bar on the queue — only rendered when not-a-remittance items exist. */
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem 1rem; margin-bottom: .8rem; }
+.bulk-bar .bulk-reason { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; }
+.bulk-bar .bulk-note { color: var(--text-muted); font-size: .8rem; flex-basis: 100%; }
+th.select-col, td.select-col { width: 2.5rem; text-align: center; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

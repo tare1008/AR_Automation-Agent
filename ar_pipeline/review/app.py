@@ -186,6 +186,28 @@ def queue_rows_fragment(
     return _render(request, "_queue_rows.html", rows=list_pending(session))
 
 
+@router.post("/bulk-reject")
+def bulk_reject_action(
+    extraction_id: list[str] = Form(default=[]),
+    reason: str = Form(default=""),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, bulk_reject_not_remittance
+
+    ids: list[uuid.UUID] = []
+    for raw_id in extraction_id:
+        try:
+            ids.append(uuid.UUID(raw_id))
+        except ValueError:
+            continue
+    try:
+        n = bulk_reject_not_remittance(session, ids, user, reason)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/queue?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse(f"/review/queue?flash={quote(f'{n} rejected')}", status_code=303)
+
+
 @router.get("/approved", response_class=HTMLResponse)
 def approved_page(
     request: Request,
@@ -322,18 +344,35 @@ async def edit_action(
     session: Session = Depends(get_db),
 ) -> Response:
     from ar_pipeline.review.forms import parse_form_to_canonical
-    from ar_pipeline.review.service import ReviewError, save_edits
+    from ar_pipeline.review.service import ReviewError, next_pending_after, save_edits
 
     raw = await request.form()
     approve = raw.get("approve") == "1"
     canonical = parse_form_to_canonical({k: v for k, v in raw.items() if isinstance(v, str)})
+    planned = next_pending_after(session, extraction_id) if approve else None
     try:
         save_edits(session, extraction_id, user, canonical, approve=approve)
     except ReviewError as exc:
         return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
     if approve:
-        return RedirectResponse("/review?flash=Approved", status_code=303)
+        return _to_next_item(session, planned, "Approved")
     return RedirectResponse(f"/review/{extraction_id}?flash=Saved", status_code=303)
+
+
+def _to_next_item(session: Session, planned: uuid.UUID | None, done: str) -> Response:
+    """After approve/reject, land on the next item instead of bouncing the
+    reviewer back to a list — or on an empty queue if that was the last."""
+    from ar_pipeline.review.service import resolve_next
+
+    next_id, remaining = resolve_next(session, planned)
+    if next_id is None:
+        return RedirectResponse(
+            f"/review/queue?flash={quote(f'{done} — queue clear')}", status_code=303
+        )
+    return RedirectResponse(
+        f"/review/{next_id}?flash={quote(f'{done} — {remaining} left in queue')}",
+        status_code=303,
+    )
 
 
 @router.post("/{extraction_id}/reject")
@@ -343,13 +382,29 @@ def reject_action(
     user: User = Depends(require_user),
     session: Session = Depends(get_db),
 ) -> Response:
-    from ar_pipeline.review.service import ReviewError, reject_extraction
+    from ar_pipeline.review.service import ReviewError, next_pending_after, reject_extraction
 
+    planned = next_pending_after(session, extraction_id)
     try:
         reject_extraction(session, extraction_id, user, reason)
     except ReviewError as exc:
         return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
-    return RedirectResponse("/review?flash=Rejected", status_code=303)
+    return _to_next_item(session, planned, "Rejected")
+
+
+@router.get("/{extraction_id}/next")
+def skip_action(
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import next_pending_after
+
+    next_id = next_pending_after(session, extraction_id)
+    if next_id is None:
+        flash = quote("Nothing else in the queue")
+        return RedirectResponse(f"/review/{extraction_id}?flash={flash}", status_code=303)
+    return RedirectResponse(f"/review/{next_id}", status_code=303)
 
 
 @router.post("/{extraction_id}/reprocess")

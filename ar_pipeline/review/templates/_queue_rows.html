@@ -1,18 +1,32 @@
 {% if not rows %}<p>Nothing waiting for review.</p>{% endif %}
 {% if rows %}
+{% set junk = rows|rejectattr("is_remittance")|list %}
+{% if junk %}
+<form method="post" action="/review/bulk-reject" id="bulkRejectForm" class="bulk-bar">
+  <label class="bulk-reason">Reason
+    <input type="text" name="reason" value="Not a remittance" required>
+  </label>
+  <button type="submit" class="btn-danger">Reject selected</button>
+  <span class="bulk-note">Only items marked &ldquo;not a remittance&rdquo; can be rejected in bulk &mdash; real payments are always reviewed one by one.</span>
+</form>
+{% endif %}
 <div class="table-wrap">
 <table>
   <thead><tr>
+    {% if junk %}<th class="select-col"><span class="sr-only">Select</span></th>{% endif %}
     <th>Received</th><th>From</th><th>Subject</th><th>Payment</th>
     <th>Confidence</th><th>Flags</th><th></th>
   </tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
+    {% if junk %}<td class="select-col">
+      {% if not r.is_remittance %}<input type="checkbox" name="extraction_id" value="{{ r.extraction_id }}" form="bulkRejectForm" aria-label="Select {{ r.subject }}">{% endif %}
+    </td>{% endif %}
     <td>{{ r.received_at.strftime("%Y-%m-%d %H:%M") }}</td>
     <td class="truncate" title="{{ r.sender_address }}">{{ r.sender_address }}</td>
     <td class="truncate" title="{{ r.subject }}">{{ r.subject }}</td>
-    <td>#{{ r.payment_index }}
+    <td>{% if r.is_multi_payment %}#{{ r.payment_index }}{% endif %}
       {% if not r.is_remittance %}<span class="badge bad">not a remittance</span>{% endif %}
     </td>
     <td class="num">{{ "%.2f"|format(r.confidence) if r.confidence is not none else "—" }}</td>

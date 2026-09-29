@@ -47,7 +47,7 @@ def test_edit_then_approve_inserts_delivery(client, seed_pending, db_session):
     email, ext = seed_pending()
     r = client.post(f"/review/{ext.id}/edit", data=_form(approve="1"))
     assert r.status_code == 303
-    assert r.headers["location"] == "/review?flash=Approved"
+    assert r.headers["location"].startswith("/review/queue?flash=Approved")
     db_session.refresh(ext)
     assert ext.status == "approved"
     assert db_session.scalars(select(Delivery).where(Delivery.extraction_id == ext.id)).all()

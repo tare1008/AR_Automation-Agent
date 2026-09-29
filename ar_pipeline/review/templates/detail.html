@@ -15,7 +15,8 @@
 {% endmacro %}
 {% block title %}{{ view.email.subject }} — AR Review by MLDeep Systems{% endblock %}
 {% block content %}
-<p class="lede"><a href="/review">&larr; Back to queue</a></p>
+<p class="lede"><a href="/review/queue">&larr; Back to queue</a>
+  &middot; <a href="/review/{{ view.extraction.id }}/next">Skip to next &rarr;</a></p>
 <h1>{{ view.email.subject }}</h1>
 <p class="meta">From {{ view.email.sender_address }} ·
    received {{ view.email.received_at.strftime("%Y-%m-%d %H:%M") }} ·
@@ -42,7 +43,9 @@
     <ul>
       {% for a in view.attachments %}
       <li><a href="/review/{{ view.extraction.id }}/attachment/{{ a.id }}" target="_blank">
-        {{ a.filename }}</a> <span class="badge">{{ a.content_type }}</span></li>
+        {{ a.filename }}</a> <span class="badge">{{ a.content_type }}</span>
+        {% set why = view.skipped_attachments.get(a.id|string) %}
+        {% if why %}<span class="badge warn">not read &mdash; {{ why }}</span>{% endif %}</li>
       {% endfor %}
     </ul>
     {% endif %}

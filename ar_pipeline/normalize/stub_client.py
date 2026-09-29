@@ -92,6 +92,9 @@ def _looks_like_company_name(line: str) -> bool:
 
 # an explicit non-INR currency code — INR is the default absent one of these.
 _CURRENCY_RE = re.compile(r"\b(USD|EUR|GBP|AED|SGD|AUD|CAD|CHF|JPY)\b")
+# a currency symbol directly in front of an amount ("$12,500", "US$ 12,500").
+_CURRENCY_SYMBOL_RE = re.compile(r"(US\$|\$|€|£|₹)\s?\d")
+_CURRENCY_SYMBOLS = {"US$": "USD", "$": "USD", "€": "EUR", "£": "GBP", "₹": "INR"}
 # language that says a payment already happened, or a bank reference is
 # present at all — either is a real remittance signal.
 _PAYMENT_DONE_RE = re.compile(
@@ -174,7 +177,10 @@ def _payer_name(text: str) -> str:
 
 def _currency(text: str) -> str:
     m = _CURRENCY_RE.search(text)
-    return m.group(1).upper() if m else "INR"
+    if m:
+        return m.group(1).upper()
+    s = _CURRENCY_SYMBOL_RE.search(text)
+    return _CURRENCY_SYMBOLS[s.group(1)] if s else "INR"
 
 
 def _is_remittance(text: str) -> bool:

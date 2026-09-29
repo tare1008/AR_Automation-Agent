@@ -6,8 +6,11 @@
 </h1>
 <div class="masthead-row">
   <p class="lede">Every email the mailbox received. Flag-free, high-confidence extractions are approved automatically and sent straight to the backend; the rest wait for a reviewer.</p>
-  <form method="post" action="/review/poll-now">
-    <button type="submit" class="btn-quiet" title="Poll the mailbox and run the pipeline right now, instead of waiting for the scheduler">&#x21bb; Poll now</button>
+  <form method="post" action="/review/poll-now" id="pollNowForm">
+    <button type="submit" class="btn-quiet" id="pollNowBtn" title="Poll the mailbox and run the pipeline right now, instead of waiting for the scheduler">
+      <span class="spinner" hidden></span>
+      <span class="label">&#x21bb; Poll now</span>
+    </button>
   </form>
 </div>
 

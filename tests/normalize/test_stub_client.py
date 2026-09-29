@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from ar_pipeline.normalize.normalizer import NormalizerOutput
 from ar_pipeline.normalize.stub_client import StubLLMClient
 
@@ -140,6 +142,20 @@ def test_payer_name_sign_off_fallback_ignores_a_reference_or_total_line():
 def test_currency_detected_from_an_explicit_code():
     out = _parse("We have wired USD 45,000.00 via SWIFT against Invoice EXP-2026-0456.")
     assert out.payments[0].currency == "USD"
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("We have wired $12,500.00 against Invoice INV-1.", "USD"),
+        ("We have wired US$ 12,500.00 against Invoice INV-1.", "USD"),
+        ("Paid €8,400.00 against Invoice INV-1.", "EUR"),
+        ("Paid £8,400.00 against Invoice INV-1.", "GBP"),
+        ("Paid ₹8,400.00 against Invoice INV-1.", "INR"),
+    ],
+)
+def test_currency_detected_from_a_symbol(text, expected):
+    assert _parse(text).payments[0].currency == expected
 
 
 def test_currency_defaults_to_inr_when_no_foreign_code_present():

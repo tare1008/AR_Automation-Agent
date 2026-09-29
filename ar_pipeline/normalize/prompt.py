@@ -13,7 +13,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "2"
+PROMPT_VERSION = "3"
 
 _MAX_USER_CHARS = 40_000
 _TRUNCATION_MARKER = "\n\n[... content truncated ...]"
@@ -61,7 +61,9 @@ symbols and digit-group separators, keep amounts as plain decimal numbers \
 (e.g. "1,23,456.78" becomes 123456.78), but do not round, reformat or \
 recompute them.
 
-`currency` defaults to INR when the material does not say otherwise. \
+`currency` is always a three-letter ISO 4217 code, never a symbol or a word: \
+write "$" or "US$" as USD, "€" as EUR, "£" as GBP, "₹" / "Rs" / "Rupees" as \
+INR. It defaults to INR when the material does not say otherwise. \
 `payment_reference` is the bank UTR / RTGS / NEFT reference if one is present, \
 otherwise null; `payment_reference_type` is one of "utr", "rtgs", "neft", \
 "request_number", "cheque", or null. Many advices carry no bank reference at \
