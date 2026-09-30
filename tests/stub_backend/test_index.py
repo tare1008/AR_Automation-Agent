@@ -80,3 +80,11 @@ def test_fragment_is_bare_and_matches_index_content():
 def test_fragment_shows_empty_state_with_no_remittances():
     c = _client()
     assert "No remittances received yet" in c.get("/fragment").text
+
+
+def test_live_refresh_pauses_while_a_json_panel_is_open():
+    """The 3.5s refresh replaces the table, which would snap an open
+    "View JSON" panel shut mid-read. The poller must skip while one is open."""
+    c = _client()
+    page = c.get("/").text
+    assert "details[open]" in page

@@ -83,6 +83,9 @@ _POLL_SCRIPT = """
   if (!el) return;
   setInterval(function () {
     if (document.hidden) return;
+    // Swapping the table would snap an open "View JSON" panel shut while
+    // someone is reading it — hold the refresh until they close it.
+    if (el.querySelector('details[open]')) return;
     fetch('/fragment').then(function (r) { return r.ok ? r.text() : null; })
       .then(function (html) { if (html !== null) el.innerHTML = html; })
       .catch(function () {});

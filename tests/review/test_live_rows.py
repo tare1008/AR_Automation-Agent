@@ -99,3 +99,9 @@ def test_approved_rows_requires_login():
 
     with TestClient(app, follow_redirects=False) as anon:
         assert anon.get("/review/approved-rows").status_code == 303
+
+
+def test_static_assets_are_versioned_so_browsers_refetch_after_a_change(client):
+    page = client.get("/review").text
+    assert "/review/static/review.js?v=" in page
+    assert "/review/static/review.css?v=" in page

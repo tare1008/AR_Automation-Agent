@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AR Review by MLDeep Systems{% endblock %}</title>
-  <link rel="stylesheet" href="/review/static/review.css">
+  <link rel="stylesheet" href="{{ static_url('review.css') }}">
 </head>
 <body>
   <header class="topbar">
@@ -34,7 +34,7 @@
   </header>
   {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
   <main>{% block content %}{% endblock %}</main>
-  <script src="/review/static/review.js"></script>
+  <script src="{{ static_url('review.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

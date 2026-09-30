@@ -99,7 +99,11 @@ def test_from_settings_raises_when_client_id_missing(monkeypatch):
     config_module.get_settings.cache_clear()
 
 
-def test_build_graph_auth_dispatches_on_mode(monkeypatch):
+@patch("ar_pipeline.ingest.auth.msal.PublicClientApplication")
+def test_build_graph_auth_dispatches_on_mode(mock_app_cls, monkeypatch):
+    # Patched like its neighbours: a real PublicClientApplication does tenant
+    # discovery over the network in its constructor, which hangs this test
+    # whenever the network path to login.microsoftonline.com is broken.
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://x:y@localhost/z")
     monkeypatch.setenv("GRAPH_AUTH_MODE", "delegated")
     monkeypatch.setenv("GRAPH_CLIENT_ID", "client-id")

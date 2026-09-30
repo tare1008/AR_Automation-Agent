@@ -71,7 +71,12 @@ class GmailClient:
         max_attempts: int = 3,
     ) -> None:
         self._auth = auth
-        self._http = http or httpx.Client(base_url=_GMAIL_BASE_URL, timeout=30)
+        # Short connect timeout: Python tries each resolved address in turn, so
+        # a dead IPv6 path with 8 AAAA records ahead of the A records costs
+        # 8 x connect before a working IPv4 address is reached.
+        self._http = http or httpx.Client(
+            base_url=_GMAIL_BASE_URL, timeout=httpx.Timeout(30, connect=3)
+        )
         self._max_attempts = max_attempts
 
     @classmethod

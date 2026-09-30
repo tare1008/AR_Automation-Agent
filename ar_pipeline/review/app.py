@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import pathlib
 import re
 import uuid
@@ -27,6 +28,8 @@ from ar_pipeline.review.auth import (
 
 TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 STATIC_DIR = pathlib.Path(__file__).parent / "static"
+
+log = logging.getLogger(__name__)
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 router = APIRouter(prefix="/review")
@@ -58,6 +61,20 @@ def _money_filter(value: object, currency: str = "INR") -> str:
 
 
 templates.env.filters["money"] = _money_filter
+
+
+def _static_url(name: str) -> str:
+    """URL for a static file, versioned by its mtime. The files are served
+    without cache headers, so browsers may reuse a stale copy under
+    heuristic caching; a changed ``?v=`` forces a refetch after an edit."""
+    try:
+        version = int((STATIC_DIR / name).stat().st_mtime)
+    except OSError:
+        version = 0
+    return f"/review/static/{name}?v={version}"
+
+
+templates.env.globals["static_url"] = _static_url
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -127,6 +144,9 @@ def poll_now_action(
     pipeline, attempt deliveries — instead of waiting on the scheduler's
     interval. For a demo with a handful of emails this finishes in seconds;
     it's the same work `ar-pipeline tick` does, plus the mailbox poll."""
+    import google.auth.exceptions
+    import httpx
+
     from ar_pipeline.config import get_settings
     from ar_pipeline.deliver import backend_client, deliverer
     from ar_pipeline.extract.vision import get_vision_extractor
@@ -135,11 +155,18 @@ def poll_now_action(
     from ar_pipeline.pipeline.advance import advance_once
     from ar_pipeline.storage import get_blob_store
 
-    poll_stats = run_poll()
-    if poll_stats is not None:
-        parts = [f"poll: {poll_stats.new_emails} new"]
+    try:
+        poll_stats = run_poll()
+    except (httpx.TransportError, google.auth.exceptions.TransportError):
+        # A network failure reaching the mailbox must say so on screen, not
+        # only in the server log — and emails already fetched still advance.
+        log.warning("poll-now: mailbox unreachable", exc_info=True)
+        parts = ["poll: mailbox unreachable — check the network"]
     else:
-        parts = ["poll: not configured"]
+        if poll_stats is not None:
+            parts = [f"poll: {poll_stats.new_emails} new"]
+        else:
+            parts = ["poll: not configured"]
 
     adv = advance_once(session, get_blob_store(), get_vision_extractor(), get_llm_client())
     parts.append(

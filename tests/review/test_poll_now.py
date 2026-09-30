@@ -85,3 +85,34 @@ def test_poll_now_reports_not_configured_when_mailbox_missing(client, monkeypatc
     resp = client.post("/review/poll-now")
 
     assert "not configured" in unquote(resp.headers["location"])
+
+
+@pytest.mark.parametrize("make_error", ["httpx", "google"])
+def test_poll_now_reports_an_unreachable_mailbox_and_still_advances(
+    client, monkeypatch, make_error
+):
+    import google.auth.exceptions
+    import httpx
+
+    from ar_pipeline.pipeline.advance import AdvanceStats
+
+    def boom():
+        if make_error == "httpx":
+            raise httpx.ConnectTimeout("timed out")
+        raise google.auth.exceptions.TransportError("connection refused")
+
+    monkeypatch.setattr("ar_pipeline.ingest.service.run_poll", boom)
+    monkeypatch.setattr(
+        "ar_pipeline.pipeline.advance.advance_once",
+        lambda session, blob, vision, llm: AdvanceStats(
+            classified=1, extracted=0, normalized=0, errored=0
+        ),
+    )
+
+    resp = client.post("/review/poll-now")
+    location = unquote(resp.headers["location"])
+
+    assert resp.status_code == 303
+    assert "mailbox unreachable" in location
+    assert "check the network" in location
+    assert "1 classified" in location

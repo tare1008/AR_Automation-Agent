@@ -59,7 +59,11 @@ class HttpGraphClient:
         self._base_path = (
             "/me" if isinstance(auth, DelegatedGraphAuth) else f"/users/{quote(mailbox, safe='@')}"
         )
-        self._http = http or httpx.Client(base_url=_GRAPH_BASE_URL, timeout=30)
+        # Short connect timeout: see GmailClient — each resolved address is
+        # tried in turn, so a dead IPv6 path multiplies the connect wait.
+        self._http = http or httpx.Client(
+            base_url=_GRAPH_BASE_URL, timeout=httpx.Timeout(30, connect=3)
+        )
         self._max_attempts = max_attempts
 
     @classmethod
