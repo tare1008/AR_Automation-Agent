@@ -13,7 +13,7 @@
 {% endif %}
 {% if history %}
 <form method="post" action="/review/bulk-already-recorded" id="bulkRecordedForm" class="bulk-bar">
-  <button type="submit">Mark selected as already recorded</button>
+  <button type="submit" class="btn-quiet">Mark selected as already recorded</button>
   <span class="bulk-note">Only historical payments (earlier messages or before go-live) can be marked. They are added to the invoice ledger but never sent to your system again.</span>
 </form>
 {% endif %}

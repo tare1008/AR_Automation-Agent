@@ -100,3 +100,56 @@ def test_editing_a_reference_to_a_free_one_rekeys_the_row(client, db_session, se
     row = db_session.get(Extraction, ext.id)
     assert row.status == "pending_review"
     assert row.payment_key == "utr:UTR9" and row.payment_key_strength == "strong"
+
+
+def test_bulk_ignores_approved_non_remittance_and_empty_canonical(client, db_session, seed_pending):
+    approved = _historical(db_session, seed_pending)
+    approved.status = "approved"
+    _e, junk = seed_pending(is_remittance=False)
+    junk.historical_reason = "earlier_message"
+    _e, empty = seed_pending(canonical={})
+    empty.historical_reason = "earlier_message"
+    db_session.flush()
+    r = client.post(
+        "/review/bulk-already-recorded",
+        data={"extraction_id": [str(approved.id), str(junk.id), str(empty.id)]},
+    )
+    assert "0 marked already recorded" in _loc(r)
+    db_session.expire_all()
+    assert db_session.get(Extraction, approved.id).status == "approved"
+    assert db_session.get(Extraction, junk.id).status == "pending_review"
+    assert db_session.get(Extraction, empty.id).status == "pending_review"
+
+
+def test_edit_keeps_historical_and_truncation_flags(client, db_session, seed_pending):
+    from ar_pipeline.normalize.service import TRUNCATED_FLAG
+
+    ext = _historical(db_session, seed_pending)
+    hist = ext.validation_flags[0]
+    ext.validation_flags = [hist, TRUNCATED_FLAG]
+    db_session.flush()
+    form = _form("UTR-1")
+    form["header.payer_name"] = "Acme Corporation"
+    client.post(f"/review/{ext.id}/edit", data=form)
+    db_session.expire_all()
+    flags = db_session.get(Extraction, ext.id).validation_flags
+    assert flags[:2] == [hist, TRUNCATED_FLAG]
+
+
+def test_edit_keeps_reference_flag_when_key_untouched_and_approve_not_blocked(
+    client, db_session, seed_pending
+):
+    _e, ext = seed_pending()
+    flag = "header: reference UTR1 was already used for ₹500.00 (payment x)"
+    ext.validation_flags = [flag]
+    db_session.flush()
+    form = _form("UTR-1")  # same reference as the seed
+    form["header.payment_date"] = "2026-09-05"
+    client.post(f"/review/{ext.id}/edit", data=form)
+    db_session.expire_all()
+    row = db_session.get(Extraction, ext.id)
+    assert flag in row.validation_flags
+    form["approve"] = "1"
+    client.post(f"/review/{ext.id}/edit", data=form)
+    db_session.expire_all()
+    assert db_session.get(Extraction, ext.id).status == "approved"

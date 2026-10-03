@@ -153,10 +153,8 @@
       <button type="submit" class="btn-danger">Reject</button>
     </form>
 
-    {% if view.extraction.historical_reason %}
-    <form method="post" action="/review/{{ view.extraction.id }}/already-recorded" class="stack">
-      <button type="submit" class="btn-quiet">Already recorded in our books</button>
-    </form>
+    {% if view.extraction.historical_reason and view.extraction.status == "pending_review" %}
+    <button type="button" class="btn-quiet" data-open-dialog="recordedConfirm">Already recorded in our books</button>
     {% endif %}
 
     <button type="button" class="btn-quiet" data-open-dialog="reprocessConfirm">Reprocess (re-run extraction)</button>
@@ -177,6 +175,22 @@
     {% endif %}
   </section>
 </div>
+
+{% if view.extraction.historical_reason and view.extraction.status == "pending_review" %}
+<dialog id="recordedConfirm">
+  <div class="dialog-body">
+    <h2>Mark as already recorded?</h2>
+    <p class="lede">This adds the payment to the invoice ledger but never sends it to your
+      system. It can't be undone from here.</p>
+  </div>
+  <div class="dialog-foot">
+    <form method="dialog"><button type="submit" class="btn-quiet">Cancel</button></form>
+    <form method="post" action="/review/{{ view.extraction.id }}/already-recorded">
+      <button type="submit">Mark already recorded</button>
+    </form>
+  </div>
+</dialog>
+{% endif %}
 
 <dialog id="reprocessConfirm">
   <div class="dialog-body">
