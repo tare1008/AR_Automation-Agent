@@ -29,10 +29,26 @@ def _is_duplicate(session: Session, invoice: Invoice, reference: str, amount_pai
                 InvoicePayment.invoice_id == invoice.id,
                 InvoicePayment.payment_reference == reference,
                 InvoicePayment.amount_paid == amount_paid,
+                InvoicePayment.kind == "payment",
             )
         )
         or 0
     ) > 0
+
+
+def _adjustment_balance_flags(
+    i: int, number: str, invoice_amount: Decimal, paid: Decimal, amount: Decimal, currency: str
+) -> list[str]:
+    if status_for(invoice_amount, paid) in ("paid", "overpaid"):
+        return [f"line {i}: adjustment reduces {number}, which is already fully paid"]
+    outstanding = invoice_amount - paid
+    if amount > outstanding + TOLERANCE:
+        return [
+            f"line {i}: adjustment reduces {number} by {format_money(amount, currency)} but "
+            f"only {format_money(outstanding, currency)} outstanding; overpaid by "
+            f"{format_money(amount - outstanding, currency)}"
+        ]
+    return []
 
 
 def check_against_ledger(session: Session, payload: RemittancePayload) -> list[str]:
@@ -46,6 +62,9 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
     # Σ settled by earlier lines of this payment, per number key (two lines for
     # "INV-1" and "INV 1" must not each pass against the full outstanding).
     earlier: dict[str, Decimal] = {}
+    # invoice lines of this payment, by number key: what the first such line says
+    # the invoice is for (an adjustment may reduce one of them — R7)
+    stated: dict[str, Decimal] = {}
 
     for i, line in enumerate(payload.line_items):
         if line.kind == "adjustment":
@@ -64,6 +83,8 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
         invoice = session.scalar(select(Invoice).where(Invoice.number_key == key).with_for_update())
 
         if invoice is None:
+            stated.setdefault(key, line.invoice_amount)
+            earlier[key] = earlier.get(key, Decimal("0")) + settled
             session.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": key})
             if every_invoice is None:
                 every_invoice = list(session.scalars(select(Invoice)))
@@ -129,9 +150,20 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
             continue
         key = number_key(line.applies_to or "")
         target = session.scalar(select(Invoice).where(Invoice.number_key == key).with_for_update())
-        if target is None:
-            continue
         amount = sum((d.amount for d in line.deductions), Decimal("0"))
+        before = earlier.get(key, Decimal("0"))
+        if target is None:
+            # R7: the target is one of this payment's own (new) invoice lines
+            invoice_amount = stated.get(key)
+            if invoice_amount is None or invoice_amount <= 0:
+                continue
+            earlier[key] = before + amount
+            flags.extend(
+                _adjustment_balance_flags(
+                    i, line.applies_to or "", invoice_amount, before, amount, header.currency
+                )
+            )
+            continue
         if target.currency != header.currency:
             flags.append(
                 f"line {i}: adjustment of {format_money(amount, header.currency)} — "
@@ -139,21 +171,18 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
                 "not applied to the balance"
             )
             continue
+        if payers_differ(header.payer_name, target.payer_name):
+            flags.append(
+                f"line {i}: adjustment reduces {target.invoice_number}, which belongs to "
+                f"{target.payer_name}; payment is from {header.payer_name}"
+            )
         bal = balance_for(session, target)
-        before = earlier.get(key, Decimal("0"))
         earlier[key] = before + amount
-        if status_for(target.amount, bal.paid + before) in ("paid", "overpaid"):
-            flags.append(
-                f"line {i}: adjustment reduces {target.invoice_number}, which is already fully paid"
+        flags.extend(
+            _adjustment_balance_flags(
+                i, target.invoice_number, target.amount, bal.paid + before, amount, target.currency
             )
-        elif amount > bal.outstanding - before + TOLERANCE:
-            outstanding = bal.outstanding - before
-            flags.append(
-                f"line {i}: adjustment reduces {target.invoice_number} by "
-                f"{format_money(amount, target.currency)} but only "
-                f"{format_money(outstanding, target.currency)} outstanding; overpaid by "
-                f"{format_money(amount - outstanding, target.currency)}"
-            )
+        )
     flags.extend(adjustment_flags(session, payload))
     return flags
 

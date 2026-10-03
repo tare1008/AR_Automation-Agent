@@ -128,6 +128,13 @@ def test_posting_applies_adjustments_to_their_invoice(db_session, seed_extractio
         )
         is None
     )
+    # R7: line 0 settles the invoice in full, so the adjustment is flagged (posting unchanged)
+    fresh = RemittancePayload.model_validate(
+        _payload(_adjustment("2510004583DISCO", "50.00", applies_to="CBB2510004583"))
+    )
+    assert "line 1: adjustment reduces CBB2510004583, which is already fully paid" in (
+        check_against_ledger(db_session, fresh)
+    )
 
 
 def test_adjustment_cross_currency_flag(db_session, make_invoice):
@@ -168,3 +175,88 @@ def test_no_adjustment_lines_means_no_query():
     # session=None: any DB query would raise
     assert resolve_adjustments(None, payload) == payload  # type: ignore[arg-type]
     assert adjustment_flags(None, payload) == []  # type: ignore[arg-type]
+
+
+def test_same_payment_target_is_balance_checked(db_session):
+    # R7: no books — the target is only an invoice line of this payment
+    payload = RemittancePayload.model_validate(
+        _payload(_adjustment("2510004583DISCO", "50.00", applies_to="CBB2510004583"))
+    )
+    flags = check_against_ledger(db_session, payload)
+    assert "line 1: adjustment reduces CBB2510004583, which is already fully paid" in flags
+
+
+def test_same_payment_target_overpaid_by(db_session):
+    c = canonical_for(
+        invoice_number="CBB2510004583", invoice_amount="1000.00", amount_paid="980.00"
+    )
+    c["line_items"].append(_adjustment("2510004583DISCO", "50.00", applies_to="CBB2510004583"))
+    flags = check_against_ledger(db_session, RemittancePayload.model_validate(c))
+    assert (
+        "line 1: adjustment reduces CBB2510004583 by ₹50.00 but only ₹20.00 outstanding; "
+        "overpaid by ₹30.00" in flags
+    )
+
+
+def _cross_payer_payload(applies_to: str | None = None) -> RemittancePayload:
+    c = canonical_for(invoice_number="OTHER-1", invoice_amount="10.00", amount_paid="10.00")
+    c["line_items"].append(_adjustment("DN/2025/4583", "50.00", applies_to=applies_to))
+    return RemittancePayload.model_validate(c)
+
+
+def test_cross_payer_exact_match_is_only_a_suggestion(db_session, make_invoice):
+    # R8
+    make_invoice("SO/2025/4583", amount="500.00", payer="Other Party Ltd")
+    resolved = resolve_adjustments(db_session, _cross_payer_payload())
+    assert resolved.line_items[1].applies_to is None
+    assert adjustment_suggestions(db_session, resolved, 1) == ["SO/2025/4583"]
+    assert "line 1: adjustment of ₹50.00 — did you mean SO/2025/4583?" in adjustment_flags(
+        db_session, resolved
+    )
+
+
+def test_same_or_unknown_payer_exact_match_still_resolves(db_session, make_invoice):
+    make_invoice("SO/2025/4583", amount="500.00", payer=None)
+    resolved = resolve_adjustments(db_session, _cross_payer_payload())
+    assert resolved.line_items[1].applies_to == "SO/2025/4583"
+
+
+def test_adjustment_against_another_payers_invoice_is_flagged(db_session, make_invoice):
+    make_invoice("SO/2025/4583", amount="500.00", payer="Other Party Ltd")
+    flags = check_against_ledger(db_session, _cross_payer_payload(applies_to="SO/2025/4583"))
+    assert (
+        "line 1: adjustment reduces SO/2025/4583, which belongs to Other Party Ltd; "
+        "payment is from Acme Corp" in flags
+    )
+
+
+def test_unconfirmed_exact_target_is_offered_as_a_suggestion(db_session, make_invoice):
+    # R9.1: applies_to empty (e.g. the invoice was imported after the read)
+    make_invoice("CBB2510004516", amount="300.00")
+    payload = RemittancePayload.model_validate(_payload(_adjustment("2510004516DISCO", "20.00")))
+    assert adjustment_suggestions(db_session, payload, 1) == ["CBB2510004516"]
+
+
+def test_adjustment_rows_are_not_duplicates_of_a_payment(db_session, make_invoice, seed_extraction):
+    # R9.4: an adjustment row (amount_paid 0) with the same reference is not a repeat payment
+    inv = make_invoice("INV-1", amount="300.00")
+    ext = seed_extraction(canonical_for())
+    db_session.add(
+        InvoicePayment(
+            invoice_id=inv.id,
+            extraction_id=ext.id,
+            line_index=1,
+            kind="adjustment",
+            amount_paid=Decimal("0"),
+            deductions_total=Decimal("20.00"),
+            settled=Decimal("20.00"),
+            currency="INR",
+            payment_reference="UTR-1",
+        )
+    )
+    db_session.flush()
+    payload = RemittancePayload.model_validate(
+        canonical_for(invoice_amount="100.00", amount_paid="0.00", tds="100.00")
+    )
+    flags = check_against_ledger(db_session, payload)
+    assert not any("was already approved" in f for f in flags)

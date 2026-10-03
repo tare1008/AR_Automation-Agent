@@ -79,7 +79,7 @@ def test_saving_an_old_payload_records_no_format_noise(client, db_session, seed_
     _email, ext = seed_pending(canonical=legacy)
     assert "kind" not in ext.canonical["line_items"][0]
     form = {
-        "header.payer_name": "Acme Corp",
+        "header.payer_name": "Acme Corporation",  # one real change
         "header.total_paid_amount": "90.00",
         "header.currency": "INR",
         "header.payment_reference": "UTR-1",
@@ -95,7 +95,8 @@ def test_saving_an_old_payload_records_no_format_noise(client, db_session, seed_
         "line_items[0].deductions[0].amount": "10.00",
         "line_items[0].deductions[0].reason": "194Q",
     }
-    client.post(f"/review/{ext.id}/edit", data=form)
+    r = client.post(f"/review/{ext.id}/edit", data=form)
+    assert r.status_code == 303
     paths = list(
         db_session.scalars(
             select(ExtractionEdit.field_path).where(ExtractionEdit.extraction_id == ext.id)
@@ -104,3 +105,38 @@ def test_saving_an_old_payload_records_no_format_noise(client, db_session, seed_
     assert not any(
         p.endswith(".kind") or p.endswith(".applies_to") or "schema_version" in p for p in paths
     )
+    assert "header.payer_name" in paths
+
+
+def _adjustment_line(seed_pending, db_session, **changes):
+    email, ext = _with_adjustment(seed_pending, db_session)
+    canonical = dict(ext.canonical)
+    canonical["line_items"] = [canonical["line_items"][0], {**ADJ, **changes}]
+    ext.canonical = canonical
+    db_session.flush()
+    return ext
+
+
+def test_strip_says_new_invoice_only_for_a_line_of_this_payment(client, db_session, seed_pending):
+    # R9.3
+    ext = _adjustment_line(seed_pending, db_session, applies_to="CBB2510004583")
+    page = client.get(f"/review/{ext.id}").text
+    assert "Reduces CBB2510004583 &mdash; a new invoice in this payment." in page
+
+    ext = _adjustment_line(seed_pending, db_session, applies_to="ZZZ9999999")
+    page = client.get(f"/review/{ext.id}").text
+    assert "Reduces ZZZ9999999 &mdash; not in this payment or your invoices." in page
+    assert "a new invoice in this payment" not in page
+
+
+def test_unconfirmed_exact_target_can_be_used(client, db_session, seed_pending):
+    # R9.1: exact same-payment match left unconfirmed (applies_to empty)
+    ext = _adjustment_line(seed_pending, db_session, invoice_number="2510004583DISCO")
+    assert "Use CBB2510004583" in client.get(f"/review/{ext.id}").text
+    r = client.post(
+        f"/review/{ext.id}/use-adjustment",
+        data={"line_index": "1", "number": "CBB2510004583"},
+    )
+    assert r.status_code == 303 and "Adjustment%20now%20reduces" in r.headers["location"]
+    db_session.refresh(ext)
+    assert ext.canonical["line_items"][1]["applies_to"] == "CBB2510004583"

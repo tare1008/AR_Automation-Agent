@@ -111,8 +111,10 @@
                 Reduces <a href="/review/invoices/{{ led.invoice_id }}">{{ led.invoice_number }}</a>
                 &middot; outstanding {{ led.outstanding|money(led.currency) }}
                 &middot; <strong>after this {{ led.after_this|money(led.currency) }}</strong>
-              {% elif led.invoice_number %}
+              {% elif led.invoice_number and led.in_this_payment %}
                 Reduces {{ led.invoice_number }} &mdash; a new invoice in this payment.
+              {% elif led.invoice_number %}
+                Reduces {{ led.invoice_number }} &mdash; not in this payment or your invoices.
               {% else %}
                 Which invoice does it reduce?
                 {% for number in led.adjustment_suggestions %}

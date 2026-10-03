@@ -177,6 +177,8 @@ class LineLedger:
     suggestions: list[tuple[uuid.UUID, str]]
     kind: str = "invoice"
     adjustment_suggestions: list[str] = field(default_factory=list)
+    # an adjustment's target is one of this payment's own invoice lines
+    in_this_payment: bool = False
 
 
 def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
@@ -192,6 +194,11 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
         payload: RemittancePayload | None = RemittancePayload.model_validate(canonical)
     except ValidationError:
         payload = None
+    own_keys = {
+        number_key(str(li.get("invoice_number") or ""))
+        for li in canonical.get("line_items") or []
+        if str(li.get("kind") or "invoice") == "invoice"
+    } - {""}
     for i, line in enumerate(canonical.get("line_items") or []):
         kind = str(line.get("kind") or "invoice")
         number, settled = line_target(line)
@@ -239,6 +246,7 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
                     awaiting.get(key, _ZERO),
                     suggestions,
                     kind=kind,
+                    in_this_payment=kind == "adjustment" and key in own_keys,
                 )
             )
             continue
