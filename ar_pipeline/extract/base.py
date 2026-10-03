@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-EXTRACTOR_VERSION = "1"
+EXTRACTOR_VERSION = "2"
 """Bump on any behaviour change; stored in ``raw_extraction.extractor_version``."""
 
 
