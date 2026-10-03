@@ -83,19 +83,8 @@ disagree).
 """
 
 
-def build_user_message(
-    sender_address: str,
-    subject: str,
-    raw_extractions: list[dict],
-) -> str:
-    """Render the sender, subject and every raw extraction into one string.
-
-    Each raw extraction is ``{"text": str, "tables": list[list[list[str]]],
-    "meta": dict}``. Tables render one row per line as ``cell | cell | ...``.
-    If the rendered message would exceed ~40k chars it is cut to the first 40k
-    with a truncation marker appended and a warning logged — never silently
-    dropped.
-    """
+def _render(sender_address: str, subject: str, raw_extractions: list[dict]) -> str:
+    """Everything ``build_user_message`` renders, before the length cap."""
     parts: list[str] = [f"From: {sender_address}", f"Subject: {subject}", ""]
 
     for n, extraction in enumerate(raw_extractions, start=1):
@@ -115,7 +104,28 @@ def build_user_message(
                     parts.append(" | ".join(str(cell) for cell in row))
         parts.append("")
 
-    rendered = "\n".join(parts)
+    return "\n".join(parts)
+
+
+def is_truncated(sender_address: str, subject: str, raw_extractions: list[dict]) -> bool:
+    """True when ``build_user_message`` would cut this material at the length cap."""
+    return len(_render(sender_address, subject, raw_extractions)) > _MAX_USER_CHARS
+
+
+def build_user_message(
+    sender_address: str,
+    subject: str,
+    raw_extractions: list[dict],
+) -> str:
+    """Render the sender, subject and every raw extraction into one string.
+
+    Each raw extraction is ``{"text": str, "tables": list[list[list[str]]],
+    "meta": dict}``. Tables render one row per line as ``cell | cell | ...``.
+    If the rendered message would exceed ~40k chars it is cut to the first 40k
+    with a truncation marker appended and a warning logged — never silently
+    dropped.
+    """
+    rendered = _render(sender_address, subject, raw_extractions)
 
     if len(rendered) > _MAX_USER_CHARS:
         log.warning("normalize: user message truncated for %s", subject)

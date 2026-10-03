@@ -5,7 +5,13 @@ from decimal import Decimal
 import pytest
 from sqlalchemy import select
 
-from ar_pipeline.db.models import Email, Extraction, ExtractionSource, RawExtraction
+from ar_pipeline.db.models import (
+    Email,
+    EmailMessage,
+    Extraction,
+    ExtractionSource,
+    RawExtraction,
+)
 from ar_pipeline.normalize.llm_client import LLMRefused
 from ar_pipeline.normalize.normalizer import NormalizerOutput, PaymentDraft
 from ar_pipeline.normalize.service import normalize_one
@@ -134,7 +140,15 @@ def test_poison_llm_refusal_isolated_from_healthy_sibling(db_session, store):
     healthy = b if refused is a else a
 
     assert refused.status == "error"
-    assert refused.error_detail and "LLMRefused" in refused.error_detail
+    # per-message isolation: the refusal marks the email's only message failed,
+    # and the email errors because no message produced anything
+    assert refused.error_detail == "1 message(s) failed — see Errors"
+    (failed,) = db_session.scalars(
+        select(EmailMessage).where(
+            EmailMessage.email_id == refused.id, EmailMessage.status == "failed"
+        )
+    ).all()
+    assert failed.error_detail and "LLMRefused" in failed.error_detail
     assert healthy.status == "review"
 
     refused_rows = db_session.scalars(
@@ -143,7 +157,7 @@ def test_poison_llm_refusal_isolated_from_healthy_sibling(db_session, store):
     healthy_rows = db_session.scalars(
         select(Extraction).where(Extraction.email_id == healthy.id)
     ).all()
-    assert refused_rows == []  # savepoint rollback left no Extraction rows
+    assert refused_rows == []  # message savepoint rollback left no Extraction rows
     assert len(healthy_rows) == 1
 
     # session still usable
@@ -154,9 +168,15 @@ def test_normalize_one_deterministic_source_order(db_session, store):
     email = _to_extracted("05_direct_body_freetext", db_session, store)
 
     # hand-insert two sources whose kinds sort the opposite way to insertion
-    # order (pdf_text before excel), plus a distinct RawExtraction each.
-    s1 = ExtractionSource(email_id=email.id, kind="pdf_text", ref="att-1")
-    s2 = ExtractionSource(email_id=email.id, kind="excel", ref="att-2")
+    # order (pdf_text before excel), plus a distinct RawExtraction each. They
+    # belong to the email's message, so one AI call reads them together.
+    (message_id,) = db_session.scalars(
+        select(ExtractionSource.email_message_id).where(ExtractionSource.email_id == email.id)
+    ).all()
+    s1 = ExtractionSource(
+        email_id=email.id, email_message_id=message_id, kind="pdf_text", ref="att-1"
+    )
+    s2 = ExtractionSource(email_id=email.id, email_message_id=message_id, kind="excel", ref="att-2")
     db_session.add_all([s1, s2])
     db_session.flush()
     for src in (s1, s2):
@@ -176,6 +196,9 @@ def test_normalize_one_deterministic_source_order(db_session, store):
         ]
     )
     normalize_one(db_session, email, client)
+    # re-run: a message with a live extraction is not re-read, so retire the first run's rows
+    for row in db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)):
+        row.status = "superseded"
     email.status = "extracted"
     db_session.flush()
     normalize_one(db_session, email, client)

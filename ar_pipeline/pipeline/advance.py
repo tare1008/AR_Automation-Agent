@@ -139,7 +139,8 @@ def _step(
 
 def _normalize(session: Session, email: Email, llm_client: LLMClient) -> str:
     normalize_one(session, email, llm_client)
-    return "normalized"
+    # every message failed (or nothing to normalize): count it as errored
+    return "errored" if email.status == "error" else "normalized"
 
 
 def _no_content(p: MessagePart) -> bool:
