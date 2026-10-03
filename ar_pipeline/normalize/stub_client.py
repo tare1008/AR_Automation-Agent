@@ -52,7 +52,9 @@ _LABEL_WINDOW = 200
 # by a code-shaped token containing a digit — covers "Invoice EXP-2026-0900"
 # style mentions that name a number without a conventional INV-/label prefix.
 _INVOICE_WORD_RE = re.compile(
-    r"\binvoice\s+((?=[A-Za-z0-9/-]*\d)[A-Za-z0-9][A-Za-z0-9/-]{2,})\b",
+    # "Invoice X", "Invoice: X", "Invoice #X" — a separator is still required,
+    # so "invoices" / "invoice2026" never read as an id.
+    r"\binvoice(?:\s*[:#]\s*|\s+)((?=[A-Za-z0-9/-]*\d)[A-Za-z0-9][A-Za-z0-9/-]{2,})\b",
     re.I,
 )
 # a labeled payer-ish name: "Remitter's name:", "Vendor Name:", "Payer
@@ -194,6 +196,17 @@ def _is_remittance(text: str) -> bool:
     return not _REMINDER_RE.search(text)
 
 
+# Above this the stub can't be trusted: it emits exactly one payment, so an
+# email carrying several distinct bank references gets merged into one wrong
+# payment. Capping confidence below any sane auto-approve bar sends it to a
+# human instead of auto-sending the merge.
+_MULTI_PAYMENT_CONFIDENCE_CAP = 0.4
+
+
+def _distinct_references(text: str) -> set[str]:
+    return {m.group(2).upper() for m in _REF_KEYWORD_RE.finditer(text)}
+
+
 def _draft(text: str) -> dict[str, object]:
     amounts = _amounts(text)
     top = amounts[0] if amounts else Decimal("0")
@@ -207,6 +220,8 @@ def _draft(text: str) -> dict[str, object]:
     if invoice_number:
         confidence += 0.2
     confidence = min(confidence, 0.95)
+    if len(_distinct_references(text)) > 1:
+        confidence = min(confidence, _MULTI_PAYMENT_CONFIDENCE_CAP)
     return {
         "payer_name": _payer_name(text),
         "payment_reference": reference,
@@ -230,7 +245,14 @@ class StubLLMClient:
 
     def parse(self, *, system: str, user: str, output_model: type[T]) -> T:
         if _is_remittance(user):
-            data = {"is_remittance": True, "notes": _NOTE, "payments": [_draft(user)]}
+            notes = _NOTE
+            refs = _distinct_references(user)
+            if len(refs) > 1:
+                notes += (
+                    f" Found {len(refs)} different bank references — this looks like several"
+                    " payments, which the offline stub cannot split. Review and correct by hand."
+                )
+            data = {"is_remittance": True, "notes": notes, "payments": [_draft(user)]}
         else:
             data = {
                 "is_remittance": False,

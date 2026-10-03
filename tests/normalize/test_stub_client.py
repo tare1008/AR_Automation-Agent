@@ -66,6 +66,44 @@ def test_invoice_number_falls_back_to_a_bare_invoice_word_mention():
     assert out.payments[0].line_items[0].invoice_number == "EXP-2026-0900"
 
 
+@pytest.mark.parametrize(
+    "line", ["Invoice: MST-2026-7712", "Invoice : MST-2026-7712", "Invoice #MST-2026-7712"]
+)
+def test_invoice_number_after_a_colon_or_hash(line):
+    out = _parse(f"UTR: HDFC52026092700118\n{line}\nAmount Paid: INR 1,45,000.00")
+    assert out.payments[0].line_items[0].invoice_number == "MST-2026-7712"
+
+
+def test_invoice_date_label_with_a_colon_is_still_not_an_id():
+    out = _parse("total 5,000.00\nInvoice: dated 01-02-2026")
+    assert out.payments[0].line_items[0].invoice_number == ""
+
+
+_TWO_SETTLEMENTS = (
+    "Settlement 1:\nUTR: HDFC52026092700118\nInvoice: MST-2026-7712\n"
+    "Amount Paid: INR 1,45,000.00\n\n"
+    "Settlement 2:\nUTR: HDFC52026092800223\nInvoice: MST-2026-7733\n"
+    "Amount Paid: INR 2,10,500.00\n"
+)
+
+
+def test_several_bank_references_are_never_confident_enough_to_auto_approve():
+    """The stub can only emit one payment, so two UTRs get merged into one
+    wrong payment. It must not look trustworthy enough to auto-send."""
+    out = _parse(_TWO_SETTLEMENTS)
+    assert out.payments[0].confidence <= 0.4
+    assert "2 different bank references" in (out.notes or "")
+
+
+def test_the_same_reference_repeated_is_still_one_payment():
+    out = _parse(
+        "UTR: HDFC52026092700118\nInvoice: MST-2026-7712\nINR 1,45,000.00\n"
+        "Ref UTR HDFC52026092700118 again"
+    )
+    assert out.payments[0].confidence == 0.95
+    assert "different bank references" not in (out.notes or "")
+
+
 def test_no_amounts_still_produces_a_reviewable_draft():
     out = _parse("Subject: FW: remittance\n\nplease find attached")
     p = out.payments[0]

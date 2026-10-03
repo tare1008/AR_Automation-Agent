@@ -16,3 +16,4 @@ data/gmail_token_cache.json
 
 # Real client sample emails — never commit (PII / bank refs)
 samples/
+data/backups/
