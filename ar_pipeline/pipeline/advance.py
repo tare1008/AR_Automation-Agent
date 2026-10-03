@@ -283,7 +283,12 @@ def _classify(session: Session, email: Email, blob_store: BlobStore) -> str:
         ):
             specs.append((SourceSpec("body_text", "body"), m.id))
     if not any(not s.skipped for s, _ in specs):
-        if not atts and all(m.status in ("seen", "no_content") for m in messages):
+        # No attachments and no live source: a new message without a source has no payment
+        # signal (any signalled message always gets one), so it cannot hide a payment.
+        if not atts and (
+            any(m.status == "seen" for m in messages)
+            or all(m.status == "no_content" for m in messages)
+        ):
             email.status = "done"  # everything here is already recorded or empty
             session.flush()
             return "classified"

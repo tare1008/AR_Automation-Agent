@@ -214,7 +214,8 @@ def test_existing_messages_are_not_resplit(db_session):
 def test_seen_quote_plus_short_new_message_is_not_done(db_session, tmp_path):
     first = _text_email(db_session, PAY, "d-1")
     _record(db_session, first)
-    second = _text_email(db_session, "Ok.\n" + _quoted(PAY, note="Thanks"), "d-2")
+    note = "Released Rs 50,000 vide UTR SBIN99999999 against inv 7."
+    second = _text_email(db_session, note + "\n" + _quoted(PAY, note=""), "d-2")
     _run(db_session, tmp_path)
     db_session.refresh(second)
     assert second.status == "classified"
@@ -305,3 +306,12 @@ def test_reference_rule_seen_with_single_recorded_reference(db_session):
     e = _text_email(db_session, _quoted(body), "rr-3")
     msgs = _ensure_messages(db_session, e, [])
     assert [m.seen_reason for m in msgs if m.status == "seen"] == ["references_recorded"]
+
+
+def test_reforward_with_short_external_note_is_done(db_session, tmp_path):
+    first = _text_email(db_session, PAY, "d-7")
+    _record(db_session, first)
+    second = _text_email(db_session, _quoted(PAY, note="FYI, see below"), "d-8")
+    _run(db_session, tmp_path)
+    db_session.refresh(second)
+    assert second.status == "done"
