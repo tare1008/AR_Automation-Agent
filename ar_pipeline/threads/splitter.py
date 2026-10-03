@@ -14,7 +14,7 @@ import email.utils
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
@@ -44,7 +44,13 @@ _MAX_DATE_TRIMS = 30
 _TZ_TAIL_RE = re.compile(
     r"(?:(?<=\d)|(?<=[AP]M))\s+(?:GMT|UTC|[A-Z]{3,4})(?:\s*[+-]\d{1,2}(?::?\d{2})?)?$"
 )
-_AMPM_FIX_RE = re.compile(r"(?i)(?<=\d)\s*([ap])\.?m\.?\b")
+_OFFSET_RE = re.compile(r"(?:GMT|UTC)\s*([+-])(\d{1,2})(?::?(\d{2}))?$")
+_AMPM_FIX_RE = re.compile(r"(?i)(?<=\d)\s*([ap])\.?m\.?(?![A-Za-z])")
+# a trustworthy end of a date: a time of day or an explicit offset (not a name word)
+_DATE_END_RE = re.compile(
+    r"(?i)(?:\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AP]M)?|(?:GMT|UTC)\s*[+-]\d{1,2}(?::?\d{2})?"
+    r"|[+-]\d{4})$"
+)
 _FORWARD_RE = re.compile(
     r"(?mi)^[ \t>]*-{2,}[ \t]*Forwarded message[ \t]*-{2,}[ \t]*\n"
     r"(?P<hdrs>(?:[ \t>]*(?:From|Date|Sent|Subject|To|Cc):[^\n]*(?:\n|$))+)"
@@ -155,33 +161,61 @@ def _parse_sender(raw: str | None) -> str | None:
     return cleaned.lower() or None
 
 
-def _parse_sent(raw: str | None) -> datetime | None:
-    if not raw:
-        return None
+def _normalize_sent(raw: str) -> str:
     raw = raw.replace("\u202f", " ").replace("\u00a0", " ")
     raw = re.sub(r",(\s+\d{1,2}:\d{2})", r"\1", re.sub(r"(?i),?\s+at\s+", " ", raw.strip()))
     raw = re.sub(r"\s+", " ", raw).strip(" ,")
-    raw = _AMPM_FIX_RE.sub(lambda m: " " + m.group(1).upper() + "M", raw)
-    raw = _TZ_TAIL_RE.sub("", raw)
-    dt: datetime | None = None
+    return _AMPM_FIX_RE.sub(lambda m: " " + m.group(1).upper() + "M", raw)
+
+
+def _strptime(raw: str, *, ampm: bool) -> datetime | None:
+    offset = _OFFSET_RE.search(raw)
+    stripped = _TZ_TAIL_RE.sub("", raw)
+    for fmt in _DATE_FORMATS:
+        if ampm != ("%p" in fmt):
+            continue
+        try:
+            dt = datetime.strptime(stripped, fmt)
+        except ValueError:
+            continue
+        if offset:
+            delta = timedelta(hours=int(offset.group(2)), minutes=int(offset.group(3) or 0))
+            dt = dt.replace(tzinfo=timezone(-delta if offset.group(1) == "-" else delta))
+        return dt
+    return None
+
+
+def _parse_sent(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    raw = _normalize_sent(raw)
     has_ampm = bool(_AM_PM_RE.search(raw))
+    dt: datetime | None = None
     if not has_ampm:  # parsedate silently drops AM/PM, so it only sees 24-hour strings
         try:
             dt = email.utils.parsedate_to_datetime(raw)
         except (TypeError, ValueError, IndexError):
             dt = None
     if dt is None:
-        for fmt in _DATE_FORMATS:
-            if has_ampm != ("%p" in fmt):
-                continue
-            try:
-                dt = datetime.strptime(raw, fmt)
-                break
-            except ValueError:
-                continue
+        dt = _strptime(raw, ampm=has_ampm)
     if dt is None:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+
+
+def _split_attribution(prefix: str) -> tuple[str | None, str]:
+    """Split "<date> <display name>" by trimming words off the end until the date parses."""
+    words = prefix.split()
+    date_only: tuple[str, str] | None = None
+    for k in range(min(len(words), _MAX_DATE_TRIMS) + 1):
+        head = words[: len(words) - k]
+        if not head or _parse_sent(" ".join(head)) is None:
+            continue
+        split = (" ".join(head), " ".join(words[len(words) - k :]))
+        if _DATE_END_RE.search(_normalize_sent(split[0])):
+            return split  # longest head that ends in a time or offset
+        date_only = split  # keeps the shortest (most trimmed) date-only head
+    return date_only if date_only else (None, prefix)
 
 
 def _boundaries(text: str) -> list[_Boundary]:
@@ -193,16 +227,9 @@ def _boundaries(text: str) -> list[_Boundary]:
             continue  # "From: Accounts Team / Sent: by courier" in a message body
         found.append(_Boundary(m.start(), m.end(), m.group("sender"), m.group("sent")))
     for m in _GMAIL_RE.finditer(text):
-        words = m.group("prefix").split()
-        sent: str | None = None
-        name = m.group("prefix")
-        for k in range(min(len(words), _MAX_DATE_TRIMS) + 1):
-            head = words[: len(words) - k]
-            if head and _parse_sent(" ".join(head)) is not None:
-                sent, name = " ".join(head), " ".join(words[len(words) - k :])
-                break
+        sent, name = _split_attribution(m.group("prefix"))
         addr = m.group("addr").strip()
-        who = f"{name} <{addr}>" if "@" in addr else name or addr
+        who = addr.lower() if "@" in addr else (name.strip(" ,") or addr)
         found.append(_Boundary(m.start(), m.end(), who, sent))
     for m in _FORWARD_RE.finditer(text):
         fields = {

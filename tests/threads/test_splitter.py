@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 from bs4 import BeautifulSoup
 
@@ -199,7 +199,6 @@ def test_plain_text_nothing_is_lost():
 
 def test_odd_gmail_date_formats_still_split():
     cases = [
-        ("Wednesday, February 18, 2026, 05:07:33 PM GMT+5:30", datetime(2026, 2, 18, 17, 7, 33)),
         ("2026-02-18 17:07", datetime(2026, 2, 18, 17, 7)),
         ("2/18/26 5:07 PM", datetime(2026, 2, 18, 17, 7)),
         ("Feb 18, 2026, at 5:07 pm", datetime(2026, 2, 18, 17, 7)),
@@ -240,3 +239,35 @@ def test_blank_line_header_with_unparseable_sent_is_not_a_boundary():
         "Ok\n\nFrom: Tejeswara Rao S\nSent: 18 February 2026 17:07\nTo: X\nSubject: Re: y\n\nhi\n"
     )
     assert len(_split(text=real)) == 2
+
+
+def test_gmail_sender_is_the_address():
+    for line in (
+        "On Wed, Feb 18, 2026 at 5:07 PM, Rao, Tejeswara <AR@adityabirla.com> wrote:",
+        "On 18.02.2026 17:07, Accounts Team <ar@adityabirla.com> wrote:",
+    ):
+        parts = _split(text=f"Ok\n\n{line}\n> x\n")
+        assert len(parts) == 2, line
+        assert parts[1].sender == "ar@adityabirla.com", line
+        assert parts[1].is_internal, line
+
+
+def test_name_words_are_not_read_as_time_zone():
+    for name in ("247 Logistics", "EST Traders"):
+        parts = _split(text=f"Ok\n\nOn Wed, 18 Feb 2026 at 17:07, {name} <a@b.com> wrote:\n> x\n")
+        assert parts[1].sent_at == datetime(2026, 2, 18, 17, 7, tzinfo=UTC), name
+    yahoo = _split(
+        text="Ok\n\nOn Wednesday, February 18, 2026, 05:07:33 PM GMT+5:30, Name <a@b.com> "
+        "wrote:\n> x\n"
+    )
+    assert yahoo[1].sent_at == datetime(
+        2026, 2, 18, 17, 7, 33, tzinfo=timezone(timedelta(hours=5, minutes=30))
+    )
+
+
+def test_dotted_pm_and_rfc_named_zone():
+    parts = _split(text="Ok\n\nOn Wed, Feb 18, 2026 at 5:07 p.m. Name <a@b.com> wrote:\n> x\n")
+    assert parts[1].sent_at == datetime(2026, 2, 18, 17, 7, tzinfo=UTC)
+    text = "From: A <a@b.com>\nSent: Mon, 12 Jan 2026 10:00:00 EST\nTo: X\nSubject: s\n\nhi\n"
+    sent = _split(text=text)[0].sent_at
+    assert sent is not None and sent.utcoffset() == timedelta(hours=-5)
