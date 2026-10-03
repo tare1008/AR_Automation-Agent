@@ -1,3 +1,4 @@
+import time
 from decimal import Decimal
 
 import pytest
@@ -91,3 +92,53 @@ def test_payment_key_for(canonical, expected):
 def test_canonical_total():
     assert canonical_total(_c(total="1,000.50".replace(",", ""))) == Decimal("1000.50")
     assert canonical_total({}) is None
+
+
+# R7 fix: stacked qualifiers (issue 2)
+@pytest.mark.parametrize(
+    ("text", "refs"),
+    [
+        ("UTR Ref No: HDFC52026092700118", {"HDFC52026092700118"}),
+        ("UTR/Ref No HDFC52026092700118", {"HDFC52026092700118"}),
+        ("IMPS Reference Number 123456789012", {"123456789012"}),
+        ("NEFT - Reference no. SBIN0012345678", {"SBIN0012345678"}),
+    ],
+)
+def test_find_references_stacked_qualifiers(text, refs):
+    """Test that stacked qualifier keywords are handled correctly."""
+    assert find_references(text) == refs
+
+
+# R7 fix: space-grouped references (issue 3)
+def test_find_references_space_grouped():
+    """Test that spaces within tokens are preserved and normalized."""
+    assert find_references("UTR HDFC5202 6092 7001 18") == {"HDFC52026092700118"}
+    assert find_references("UTR HDFC52026092700118 dated 18.02") == {"HDFC52026092700118"}
+
+
+# R7 fix: lowercase words rejection (issue 4)
+def test_find_references_lowercase_rejected():
+    """Test that lowercase tokens are rejected."""
+    assert find_references("RTGS payment2024abc") == set()
+    assert find_references("RTGS Payment2024ABC") == set()
+
+
+# R7 fix: catastrophic backtracking performance (issue 1)
+def test_find_references_no_backtracking_long_spaces():
+    """Regression test: no catastrophic backtracking on long space sequences."""
+    text = "UTR" + " " * 5000 + "!"
+    start = time.perf_counter()
+    result = find_references(text)
+    elapsed = time.perf_counter() - start
+    assert result == set()
+    assert elapsed < 0.5, f"find_references took {elapsed:.2f}s (expected < 0.5s)"
+
+
+def test_find_references_no_backtracking_repeated_keywords():
+    """Regression test: no backtracking on repeated keywords."""
+    text = "NEFT " * 2000
+    start = time.perf_counter()
+    result = find_references(text)
+    elapsed = time.perf_counter() - start
+    assert result == set()
+    assert elapsed < 0.5, f"find_references took {elapsed:.2f}s (expected < 0.5s)"
