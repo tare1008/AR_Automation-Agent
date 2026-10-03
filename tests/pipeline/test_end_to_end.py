@@ -10,6 +10,7 @@ from ar_pipeline.normalize.normalizer import NormalizerOutput, PaymentDraft
 from ar_pipeline.pipeline.advance import advance_once
 from ar_pipeline.schema.canonical import LineItem
 from ar_pipeline.storage import LocalBlobStore
+from ar_pipeline.tables.models import MappingOutput
 from tests.extract.vision_fake import FakeVisionExtractor
 from tests.fixtures.loader import FIXTURE_NAMES, load_email
 from tests.normalize.llm_fake import FakeLLMClient
@@ -60,6 +61,9 @@ def _haystack(session, email_id) -> str:
     return "\n".join(parts)
 
 
+TABLE_FIXTURES = {"06_direct_excel"}
+
+
 @pytest.mark.parametrize("name", FIXTURE_NAMES)
 def test_fixture_flows_to_review(name, db_session, tmp_path):
     store = LocalBlobStore(str(tmp_path))
@@ -75,7 +79,12 @@ def test_fixture_flows_to_review(name, db_session, tmp_path):
     haystack = _haystack(db_session, email.id)
     assert MARKERS[name] in haystack, f"{name}: marker not found in {haystack!r}"
 
-    advance_once(db_session, store, vision, FakeLLMClient(response=_generic_output()))
+    # 06's spreadsheet holds a line table, so the table reader asks for a mapping first;
+    # declining it sends the email down the full-AI read this test drives.
+    responses: list = [_generic_output()]
+    if name in TABLE_FIXTURES:
+        responses.insert(0, MappingOutput(is_line_table=False))
+    advance_once(db_session, store, vision, FakeLLMClient(responses=responses))
 
     db_session.refresh(email)
     assert email.status == "review"

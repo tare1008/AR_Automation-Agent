@@ -24,12 +24,15 @@ from sqlalchemy.orm import Session
 
 from ar_pipeline.config import get_settings
 from ar_pipeline.db.models import Email, EmailMessage, Extraction, ExtractionSource, RawExtraction
+from ar_pipeline.ledger.adjustments import resolve_adjustments
 from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.normalizer import normalize_email
 from ar_pipeline.normalize.prompt import PROMPT_VERSION, is_truncated
 from ar_pipeline.normalize.recheck import TRUNCATED_FLAG, context_flags
 from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue, settle_email
 from ar_pipeline.schema.canonical import RemittancePayload
+from ar_pipeline.tables.reader import read_by_table
+from ar_pipeline.tables.totals import document_totals
 from ar_pipeline.threads.dedupe import apply_history, assign_payment_key
 
 __all__ = ["normalize_one"]
@@ -99,29 +102,54 @@ def _normalize_group(
         else email.sender_address
     )
     model = get_settings().llm_model
-    out, payments = normalize_email(
+    client_names = get_settings().client_name_list()
+    read = read_by_table(
+        session,
         email_id=str(email.id),
-        sender_address=sender,
+        sender=sender,
         subject=email.subject,
-        raw_extractions=raws,
+        raws=raws,
         llm_client=llm_client,
+        client_names=client_names,
     )
-    truncated = is_truncated(sender, email.subject, raws)
+    read_info: dict
+    if read is not None:
+        out, payments, read_info = read.output, read.payments, read.read_info
+        truncated = False
+    else:
+        out, payments = normalize_email(
+            email_id=str(email.id),
+            sender_address=sender,
+            subject=email.subject,
+            raw_extractions=raws,
+            llm_client=llm_client,
+            client_names=client_names,
+        )
+        texts = [str(r.get("text") or "") for r in raws]
+        # the amount in words names one payment; a multi-payment read can't use it
+        read_info = {
+            "path": "ai",
+            "mapping": None,
+            "document_totals": document_totals({}, texts) if len(payments) == 1 else {},
+        }
+        truncated = is_truncated(sender, email.subject, raws)
     message_id = message.id if message is not None else None
     rows: list[Extraction] = []
     if payments:
         for payment in payments:
             flags = list(payment.validation_flags) + ([TRUNCATED_FLAG] if truncated else [])
+            payload = resolve_adjustments(session, payment.payload)
             row = Extraction(
                 email_id=email.id,
                 email_message_id=message_id,
-                canonical=payment.payload.model_dump(mode="json"),
+                canonical=payload.model_dump(mode="json"),
                 confidence=payment.confidence,
                 is_remittance=payment.is_remittance,
                 validation_flags=flags,
                 llm_model=model,
                 prompt_version=PROMPT_VERSION,
                 raw_llm_response=dict(payment.raw_llm_response),
+                read_info=read_info,
                 status="pending_review",
             )
             session.add(row)
