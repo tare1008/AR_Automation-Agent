@@ -45,6 +45,7 @@ EXTRACTION_STATUSES = (
 MESSAGE_STATUSES = ("new", "seen", "no_content", "failed")
 DELIVERY_STATUSES = ("pending", "delivered", "failed")
 INVOICE_SOURCES = ("books", "email")
+INVOICE_PAYMENT_KINDS = ("payment", "adjustment")
 
 
 def _uuid_pk() -> Mapped[uuid.UUID]:
@@ -189,6 +190,7 @@ class Extraction(Base):
     payment_key_strength: Mapped[str | None] = mapped_column(String(10))
     historical_reason: Mapped[str | None] = mapped_column(String(30))
     duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("extraction.id"))
+    read_info: Mapped[dict | None] = mapped_column(MutableDict.as_mutable(JSONB))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
@@ -294,8 +296,28 @@ class InvoicePayment(Base):
     currency: Mapped[str] = mapped_column(String(3))
     payment_reference: Mapped[str | None] = mapped_column(Text)
     payment_date: Mapped[date | None] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(12), default="payment", server_default="payment")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("extraction_id", "line_index", name="uq_invoice_payment_extraction_line"),
+        CheckConstraint(_in("kind", INVOICE_PAYMENT_KINDS), name="ck_invoice_payment_kind"),
     )
+
+
+class ColumnMapping(Base):
+    """A learned column layout for one payment-advice table header (spec §4.2):
+    role -> column index, reused for every later advice with the same header."""
+
+    __tablename__ = "column_mapping"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    signature: Mapped[str] = mapped_column(String(64))
+    header: Mapped[list] = mapped_column(JSONB)
+    columns: Mapped[dict] = mapped_column(JSONB)
+    payer_slug: Mapped[str | None] = mapped_column(Text)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("signature", name="uq_column_mapping_signature"),)

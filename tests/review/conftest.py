@@ -50,6 +50,8 @@ def _canonical(payment_index: int = 0) -> dict:
                 "invoice_amount": "100.00",
                 "deductions": [{"type": "tds", "amount": "10.00", "reason": "194Q"}],
                 "amount_paid": "90.00",
+                "kind": "invoice",
+                "applies_to": None,
             }
         ],
     }

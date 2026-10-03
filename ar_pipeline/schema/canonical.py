@@ -6,6 +6,9 @@ Sign convention: every ``Deduction.amount`` is non-negative — the amount
 subtracted. Per line item, ``invoice_amount - sum(deductions) == amount_paid``.
 A vendor credit note is ``Deduction{type: 'credit_note'}``, never a negative
 line amount.
+An adjustment line (``kind='adjustment'``: a discount / debit note / credit note against an
+earlier invoice) has ``invoice_amount`` 0, its deductions, ``amount_paid = -sum(deductions)``,
+and ``applies_to`` = the invoice it reduces.
 """
 
 from __future__ import annotations
@@ -18,7 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 _Currency = Annotated[str, StringConstraints(pattern=r"^[A-Za-z]{3}$", to_upper=True)]
 
-DeductionType = Literal["tds", "credit_note", "advance_adjustment", "discount", "rounding", "other"]
+DeductionType = Literal[
+    "tds", "credit_note", "debit_note", "advance_adjustment", "discount", "rounding", "other"
+]
+LineKind = Literal["invoice", "adjustment"]
 
 
 class Deduction(BaseModel):
@@ -32,6 +38,7 @@ class Deduction(BaseModel):
 class Envelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    schema_version: Literal["2"] = "2"
     extraction_id: str
     source_email_id: str
     payment_index: int = Field(default=0, ge=0)
@@ -62,6 +69,8 @@ class LineItem(BaseModel):
     invoice_amount: Decimal
     deductions: list[Deduction] = Field(default_factory=list)
     amount_paid: Decimal
+    kind: LineKind = "invoice"
+    applies_to: str | None = None
 
 
 class RemittancePayload(BaseModel):

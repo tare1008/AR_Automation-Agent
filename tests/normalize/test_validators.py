@@ -58,7 +58,7 @@ def _payload(**overrides: Any) -> RemittancePayload:
 
 
 def test_check_version_constant() -> None:
-    assert CHECK_VERSION == "3"
+    assert CHECK_VERSION == "4"
 
 
 def test_underpaying_line_is_not_flagged_here() -> None:
@@ -263,3 +263,73 @@ def test_missing_payer_name_flag() -> None:
 def test_present_payer_name_is_clean() -> None:
     flags = validate_payload(_payload(header={"payer_name": "Acme Corp"}))
     assert "header: payer name is missing" not in flags
+
+
+def test_adjustment_line_may_pay_negative():
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from ar_pipeline.schema.canonical import (
+        Deduction,
+        Envelope,
+        Header,
+        LineItem,
+        RemittancePayload,
+    )
+
+    payload = RemittancePayload(
+        envelope=Envelope(
+            extraction_id="x",
+            source_email_id="e",
+            extracted_at=datetime(2026, 10, 4, tzinfo=UTC),
+        ),
+        header=Header(payer_name="Acme", total_paid_amount=Decimal("87500")),
+        line_items=[
+            LineItem(
+                invoice_number="CBB1",
+                invoice_amount=Decimal("100000"),
+                amount_paid=Decimal("100000"),
+            ),
+            LineItem(
+                invoice_number="1DISCO",
+                invoice_amount=Decimal("0"),
+                deductions=[Deduction(type="discount", amount=Decimal("12500"))],
+                amount_paid=Decimal("-12500"),
+                kind="adjustment",
+            ),
+        ],
+    )
+    assert validate_payload(payload) == []
+
+
+def test_malformed_adjustment_is_flagged():
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from ar_pipeline.schema.canonical import (
+        Deduction,
+        Envelope,
+        Header,
+        LineItem,
+        RemittancePayload,
+    )
+
+    payload = RemittancePayload(
+        envelope=Envelope(
+            extraction_id="x",
+            source_email_id="e",
+            extracted_at=datetime(2026, 10, 4, tzinfo=UTC),
+        ),
+        header=Header(payer_name="Acme", total_paid_amount=Decimal("-500")),
+        line_items=[
+            LineItem(
+                invoice_number="1DISCO",
+                invoice_amount=Decimal("100"),
+                deductions=[Deduction(type="discount", amount=Decimal("600"))],
+                amount_paid=Decimal("-500"),
+                kind="adjustment",
+            ),
+        ],
+    )
+    flags = validate_payload(payload)
+    assert "line 0: an adjustment must have invoice_amount 0 and amount_paid = -deductions" in flags

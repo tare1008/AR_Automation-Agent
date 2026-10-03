@@ -2,7 +2,7 @@
 {% macro deduction_row(scope, idx, d) %}
 <span class="dedrow">
   <select name="{{ scope }}.deductions[{{ idx }}].type" aria-label="Deduction type">
-    {% for t in ["tds","credit_note","advance_adjustment","discount","rounding","other"] %}
+    {% for t in ["tds","credit_note","debit_note","advance_adjustment","discount","rounding","other"] %}
     <option value="{{ t }}"{% if d and d.get("type")==t %} selected{% endif %}>{{ t }}</option>
     {% endfor %}
   </select>
@@ -218,6 +218,7 @@
     <dl>
       <dt>tds</dt><dd>Tax deducted at source by the payer before remitting.</dd>
       <dt>credit_note</dt><dd>A credit note issued against this invoice, offset from the payment.</dd>
+      <dt>debit_note</dt><dd>The payer's debit note against an earlier invoice (e.g. a price or quantity claim); appears on adjustment lines.</dd>
       <dt>advance_adjustment</dt><dd>An earlier advance payment applied against this invoice.</dd>
       <dt>discount</dt><dd>An early-payment or negotiated discount taken by the payer.</dd>
       <dt>rounding</dt><dd>A small rounding difference between invoiced and paid amounts.</dd>

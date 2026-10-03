@@ -28,7 +28,11 @@ def _row_html(payload: dict) -> str:
     total_paid_amount = html.escape(str(header.get("total_paid_amount") or "—"))
     currency = html.escape(str(header.get("currency") or ""))
     payment_reference = html.escape(str(header.get("payment_reference") or "—"))
-    line_item_count = html.escape(str(len(line_items)))
+    adjustments = sum(1 for li in line_items if li.get("kind") == "adjustment")
+    count = (
+        f"{len(line_items)} ({adjustments} adjustments)" if adjustments else str(len(line_items))
+    )
+    line_item_count = html.escape(count)
     raw_json = html.escape(json.dumps(payload, indent=2))
     return (
         f"<tr><td class='id' title='{extraction_id}'>{extraction_id[:8]}&hellip;</td>"

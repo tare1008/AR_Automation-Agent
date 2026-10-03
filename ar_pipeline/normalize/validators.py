@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from ar_pipeline.schema.canonical import RemittancePayload
 
-CHECK_VERSION = "3"
+CHECK_VERSION = "4"
 
 _KNOWN_REFERENCE_TYPES = {
     "utr",
@@ -61,7 +61,7 @@ def validate_payload(payload: RemittancePayload) -> list[str]:
     for i, line in enumerate(line_items):
         if line.invoice_amount < 0:
             flags.append(f"line {i}: negative invoice_amount {line.invoice_amount}")
-        if line.amount_paid < 0:
+        if line.amount_paid < 0 and line.kind != "adjustment":
             flags.append(f"line {i}: negative amount_paid {line.amount_paid}")
     if header.total_paid_amount < 0:
         flags.append(f"negative total_paid_amount {header.total_paid_amount}")
@@ -103,5 +103,15 @@ def validate_payload(payload: RemittancePayload) -> list[str]:
     # 9. payer name must be present
     if not header.payer_name.strip():
         flags.append("header: payer name is missing")
+
+    # 10. adjustment shape: nothing invoiced, pays back exactly its deductions
+    for i, line in enumerate(line_items):
+        if line.kind != "adjustment":
+            continue
+        sum_ded = sum((d.amount for d in line.deductions), Decimal("0"))
+        if line.invoice_amount != 0 or abs(line.amount_paid + sum_ded) > _TOLERANCE:
+            flags.append(
+                f"line {i}: an adjustment must have invoice_amount 0 and amount_paid = -deductions"
+            )
 
     return flags

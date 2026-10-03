@@ -87,3 +87,16 @@ async def test_get_returns_stored_payload(client):
 async def test_get_missing_is_404(client):
     r = await client.get("/remittances/nope")
     assert r.status_code == 404
+
+
+def test_fragment_counts_adjustment_lines():
+    from stub_backend.app import _row_html
+
+    html = _row_html(
+        {
+            "envelope": {"extraction_id": "abc"},
+            "header": {"payer_name": "Acme", "total_paid_amount": "1", "currency": "INR"},
+            "line_items": [{"kind": "invoice"}, {"kind": "adjustment"}, {"kind": "adjustment"}],
+        }
+    )
+    assert "3 (2 adjustments)" in html
