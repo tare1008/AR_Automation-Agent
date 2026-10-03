@@ -595,6 +595,26 @@ def use_invoice_action(
     )
 
 
+@router.post("/{extraction_id}/use-adjustment")
+def use_adjustment_action(
+    extraction_id: uuid.UUID,
+    line_index: int = Form(...),
+    number: str = Form(...),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import ReviewError, use_adjustment_target
+
+    try:
+        chosen = use_adjustment_target(session, extraction_id, user, line_index, number)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
+    return RedirectResponse(
+        f"/review/{extraction_id}?flash={quote(f'Adjustment now reduces {chosen}')}",
+        status_code=303,
+    )
+
+
 @router.post("/{extraction_id}/already-recorded")
 def already_recorded_action(
     extraction_id: uuid.UUID,

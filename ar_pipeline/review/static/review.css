@@ -340,3 +340,5 @@ th.select-col, td.select-col { width: 2.5rem; text-align: center; }
 /* Per-line ledger strip on the review screen */
 .ledger-strip { font-size: .85rem; color: var(--text-muted); background: var(--surface-muted); border-radius: var(--radius); padding: .45rem .7rem; margin: .2rem 0 .6rem; display: flex; flex-wrap: wrap; gap: .3rem .5rem; align-items: center; }
 .ledger-strip .ledger-note { flex-basis: 100%; color: var(--warn); font-weight: 600; }
+
+.lineitem legend { font-variant-numeric: tabular-nums; }

@@ -3,7 +3,9 @@
   function renumberLines() {
     document.querySelectorAll("#lineitems .lineitem").forEach(function (fs, i) {
       fs.dataset.index = i;
-      fs.querySelector("legend").textContent = "Line " + i;
+      var kindEl = fs.querySelector("[name$='.kind']");
+      fs.querySelector("legend").textContent =
+        "Line " + i + (kindEl && kindEl.value === "adjustment" ? " \u2014 Adjustment" : "");
       fs.querySelectorAll("[name]").forEach(function (el) {
         el.name = el.name.replace(/^line_items\[\d+\]/, "line_items[" + i + "]");
       });
@@ -33,6 +35,9 @@
       if (!tmpl) return;
       var clone = tmpl.cloneNode(true);
       clone.querySelectorAll("input").forEach(function (i) { i.value = ""; });
+      clone.querySelectorAll(".ledger-strip, .field-flag, label:has([name$='.applies_to'])").forEach(function (n) { n.remove(); });
+      var kind = clone.querySelector("[name$='.kind']");
+      if (kind) kind.value = "invoice";
       clone.querySelectorAll(".dedrow").forEach(function (r) { r.remove(); });
       document.getElementById("lineitems").appendChild(clone);
       renumberLines();

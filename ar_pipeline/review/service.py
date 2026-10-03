@@ -30,6 +30,7 @@ from ar_pipeline.pipeline.routing import approve_and_queue, settle_email
 from ar_pipeline.review.auth import User
 from ar_pipeline.review.forms import FieldEdit, canonical_diff
 from ar_pipeline.schema.canonical import RemittancePayload
+from ar_pipeline.tables.totals import totals_status
 from ar_pipeline.threads.dedupe import (
     assign_payment_key,
     lock_payment_key,
@@ -71,6 +72,8 @@ class DetailView:
     edits: list[ExtractionEdit]
     skipped_attachments: dict[str, str]
     message: EmailMessage | None = None
+    totals: str | None = None
+    read_path: str | None = None
 
 
 def _skipped_attachments(session: Session, email_ids: set[uuid.UUID]) -> dict[str, str]:
@@ -526,6 +529,14 @@ def load_detail(session: Session, extraction_id: uuid.UUID) -> DetailView:
             .order_by(ExtractionEdit.edited_at.asc())
         )
     )
+    totals = read_path = None
+    if ext.read_info:
+        read_path = ext.read_info.get("path")
+        try:
+            payload = RemittancePayload.model_validate(ext.canonical or {})
+            totals = totals_status(payload, ext.read_info.get("document_totals"))
+        except ValidationError:
+            totals = None
     return DetailView(
         ext,
         email,
@@ -534,6 +545,8 @@ def load_detail(session: Session, extraction_id: uuid.UUID) -> DetailView:
         edits,
         _skipped_attachments(session, {email.id}),
         message=session.get(EmailMessage, ext.email_message_id) if ext.email_message_id else None,
+        totals=totals,
+        read_path=read_path,
     )
 
 
@@ -622,8 +635,12 @@ def save_edits(
         raise ReviewError(f"the edited form is not valid: {exc}") from exc
 
     normalised = payload.model_dump(mode="json")
+    try:
+        stored_view = RemittancePayload.model_validate(stored).model_dump(mode="json")
+    except ValidationError:
+        stored_view = stored
     edits = canonical_diff(
-        {"header": stored.get("header", {}), "line_items": stored.get("line_items", [])},
+        {"header": stored_view.get("header", {}), "line_items": stored_view.get("line_items", [])},
         {"header": normalised["header"], "line_items": normalised["line_items"]},
     )
     key_fields = (
@@ -709,6 +726,34 @@ def use_invoice(
         approve=False,
     )
     return invoice.invoice_number
+
+
+def use_adjustment_target(
+    session: Session, extraction_id: uuid.UUID, user: User, line_index: int, number: str
+) -> str:
+    """Reviewer confirmed which invoice an adjustment reduces — through the
+    normal edit path so it is audited and the checks re-run."""
+    from ar_pipeline.ledger.adjustments import adjustment_suggestions
+
+    ext = _require_pending(session.get(Extraction, extraction_id))
+    try:
+        payload = RemittancePayload.model_validate(ext.canonical or {})
+    except ValidationError as exc:
+        raise ReviewError("this payment can't be read — edit it first") from exc
+    if not 0 <= line_index < len(payload.line_items):
+        raise ReviewError("no such line on this payment")
+    if number not in adjustment_suggestions(session, payload, line_index):
+        raise ReviewError(f"{number} is not a suggested invoice for this adjustment")
+    canonical = payload.model_dump(mode="json")
+    canonical["line_items"][line_index]["applies_to"] = number
+    save_edits(
+        session,
+        extraction_id,
+        user,
+        {"header": canonical["header"], "line_items": canonical["line_items"]},
+        approve=False,
+    )
+    return number
 
 
 def reprocess_email(session: Session, email_id: uuid.UUID) -> None:
