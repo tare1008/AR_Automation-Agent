@@ -16,6 +16,15 @@ def _cell_text(cell: Tag) -> str:
     return _WS_RE.sub(" ", cell.get_text(" ", strip=True))
 
 
+def table_rows(table: Tag) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for tr in table.find_all("tr"):
+        if not isinstance(tr, Tag):
+            continue
+        rows.append([_cell_text(c) for c in tr.find_all(["td", "th"]) if isinstance(c, Tag)])
+    return rows
+
+
 def extract_html_tables(body_html: str) -> ExtractedContent:
     soup = BeautifulSoup(body_html, "lxml")
 
@@ -28,13 +37,7 @@ def extract_html_tables(body_html: str) -> ExtractedContent:
         # duplicate the inner rows.
         if table.find("table"):
             continue
-        rows: list[list[str]] = []
-        for tr in table.find_all("tr"):
-            if not isinstance(tr, Tag):
-                continue
-            cells = [_cell_text(c) for c in tr.find_all(["td", "th"]) if isinstance(c, Tag)]
-            rows.append(cells)
-        tables.append(rows)
+        tables.append(table_rows(table))
 
     for junk in soup(["script", "style"]):
         junk.decompose()
