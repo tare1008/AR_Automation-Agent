@@ -34,13 +34,17 @@ _OUTLOOK_RE = re.compile(
     rf"(?P<run>(?:{_SEP}{_LEAD}(?:To|Cc|Bcc|Subject|Importance):[^\n]*(?:\n|$))+)"
 )
 _SUBJECT_RE = re.compile(r"(?mi)^[ \t>*]*Subject:")
-# the sender group excludes "," and "<" and every part is bounded, so a long line cannot
-# trigger quadratic backtracking. The date ends at a year, optionally followed by a time.
+# "On <date and name> <address> wrote:": the date is split from the name afterwards by
+# trimming words off the end of the prefix, so an odd date format never loses the boundary.
 _GMAIL_RE = re.compile(
-    r"(?mi)^[ \t>]*On (?P<sent>[^\n]{1,120}?\d{4}"
-    r"(?:,?[ \t]+(?:at[ \t]+)?\d{1,2}:\d{2}(?:[ \t]?[AP]M)?)?),?[ \t]*"
-    r"(?P<sender>[^\n,<]{0,120}<[^>\n]{1,200}>)[ \t]*\n?[ \t>]*wrote:[ \t]*$\n?"
+    r"(?mi)^[ \t>]*On (?P<prefix>[^\n<]{1,200})<(?P<addr>[^>\n]{1,200})>"
+    r"[ \t]*\n?[ \t>]*wrote:[ \t]*$\n?"
 )
+_MAX_DATE_TRIMS = 30
+_TZ_TAIL_RE = re.compile(
+    r"(?:(?<=\d)|(?<=[AP]M))\s+(?:GMT|UTC|[A-Z]{3,4})(?:\s*[+-]\d{1,2}(?::?\d{2})?)?$"
+)
+_AMPM_FIX_RE = re.compile(r"(?i)(?<=\d)\s*([ap])\.?m\.?\b")
 _FORWARD_RE = re.compile(
     r"(?mi)^[ \t>]*-{2,}[ \t]*Forwarded message[ \t]*-{2,}[ \t]*\n"
     r"(?P<hdrs>(?:[ \t>]*(?:From|Date|Sent|Subject|To|Cc):[^\n]*(?:\n|$))+)"
@@ -56,6 +60,9 @@ _DATE_FORMATS = (
     "%A, %B %d, %Y %I:%M %p", "%A, %d %B %Y %H:%M", "%A, %d %B, %Y %I:%M %p",
     "%a, %b %d, %Y %I:%M %p", "%a, %d %b %Y %I:%M %p", "%a, %d %b %Y %H:%M",
     "%a, %b %d, %Y %H:%M", "%a, %b %d, %Y",
+    "%A, %B %d, %Y %I:%M:%S %p", "%a, %b %d, %Y %I:%M:%S %p", "%b %d, %Y %I:%M %p",
+    "%m/%d/%y %I:%M %p", "%m/%d/%Y %I:%M %p", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S",
+    "%d/%m/%Y %H:%M", "%d/%m/%Y %H:%M:%S",
 )  # fmt: skip
 _FINGERPRINT_WORDS = 60
 _MIN_FINGERPRINT_WORDS = 8
@@ -87,10 +94,10 @@ def fingerprint(body_text: str) -> str | None:
     words = _WORD_RE.findall(text)
     if len(words) < _MIN_FINGERPRINT_WORDS:
         return None
-    refs = sorted(find_references(body_text or ""))
-    amounts = sorted(
-        {re.sub(r"[^\d.]", "", m.group()) for m in _AMOUNT_RE.finditer(body_text or "")}
-    )
+    # a quoted copy re-wraps lines, which can split "UTR" from its number
+    flat = re.sub(r"\s*\n[\s>]*", " ", body_text or "")
+    refs = sorted(find_references(flat))
+    amounts = sorted({re.sub(r"[^\d.]", "", m.group()) for m in _AMOUNT_RE.finditer(flat)})
     material = " ".join(words[:_FINGERPRINT_WORDS]) + "|" + ",".join(refs) + "|" + ",".join(amounts)
     return hashlib.sha256(material.encode()).hexdigest()
 
@@ -151,8 +158,11 @@ def _parse_sender(raw: str | None) -> str | None:
 def _parse_sent(raw: str | None) -> datetime | None:
     if not raw:
         return None
+    raw = raw.replace("\u202f", " ").replace("\u00a0", " ")
     raw = re.sub(r",(\s+\d{1,2}:\d{2})", r"\1", re.sub(r"(?i),?\s+at\s+", " ", raw.strip()))
-    raw = re.sub(r"\s+", " ", raw)
+    raw = re.sub(r"\s+", " ", raw).strip(" ,")
+    raw = _AMPM_FIX_RE.sub(lambda m: " " + m.group(1).upper() + "M", raw)
+    raw = _TZ_TAIL_RE.sub("", raw)
     dt: datetime | None = None
     has_ampm = bool(_AM_PM_RE.search(raw))
     if not has_ampm:  # parsedate silently drops AM/PM, so it only sees 24-hour strings
@@ -177,10 +187,23 @@ def _parse_sent(raw: str | None) -> datetime | None:
 def _boundaries(text: str) -> list[_Boundary]:
     found: list[_Boundary] = []
     for m in _OUTLOOK_RE.finditer(text):
-        if _SUBJECT_RE.search(m.group("run")):
-            found.append(_Boundary(m.start(), m.end(), m.group("sender"), m.group("sent")))
-    for m in _GMAIL_RE.finditer(text):
+        if not _SUBJECT_RE.search(m.group("run")):
+            continue
+        if _parse_sent(m.group("sent")) is None and "@" not in m.group("sender"):
+            continue  # "From: Accounts Team / Sent: by courier" in a message body
         found.append(_Boundary(m.start(), m.end(), m.group("sender"), m.group("sent")))
+    for m in _GMAIL_RE.finditer(text):
+        words = m.group("prefix").split()
+        sent: str | None = None
+        name = m.group("prefix")
+        for k in range(min(len(words), _MAX_DATE_TRIMS) + 1):
+            head = words[: len(words) - k]
+            if head and _parse_sent(" ".join(head)) is not None:
+                sent, name = " ".join(head), " ".join(words[len(words) - k :])
+                break
+        addr = m.group("addr").strip()
+        who = f"{name} <{addr}>" if "@" in addr else name or addr
+        found.append(_Boundary(m.start(), m.end(), who, sent))
     for m in _FORWARD_RE.finditer(text):
         fields = {
             f.group("name").lower(): f.group("value")
@@ -219,6 +242,7 @@ def split_email(
         text, table_tags = _linearize_html(body_html)
     else:
         text, table_tags = (body_text or "").replace("\r\n", "\n"), []
+    text = text.replace("\u202f", " ").replace("\u00a0", " ")
     if not text.strip():
         return []
 

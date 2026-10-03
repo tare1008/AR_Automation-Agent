@@ -195,3 +195,48 @@ def test_plain_text_nothing_is_lost():
     text = chain_text([3, 2, 1])
     got = _nonws("".join(p.raw_header + p.body_text for p in _split(text=text)))
     assert got == _nonws(text)
+
+
+def test_odd_gmail_date_formats_still_split():
+    cases = [
+        ("Wednesday, February 18, 2026, 05:07:33 PM GMT+5:30", datetime(2026, 2, 18, 17, 7, 33)),
+        ("2026-02-18 17:07", datetime(2026, 2, 18, 17, 7)),
+        ("2/18/26 5:07 PM", datetime(2026, 2, 18, 17, 7)),
+        ("Feb 18, 2026, at 5:07 pm", datetime(2026, 2, 18, 17, 7)),
+        ("18/02/2026, 17:07", datetime(2026, 2, 18, 17, 7)),
+    ]
+    for date, expected in cases:
+        text = f"Ok\n\nOn {date}, Name Surname <a@b.com> wrote:\n> Paid Rs.1,000.00\n"
+        parts = _split(text=text)
+        assert len(parts) == 2, date
+        assert parts[1].sender == "a@b.com", date
+        assert parts[1].sent_at == expected.replace(tzinfo=UTC), date
+    weird = _split(text="Ok\n\nOn someday soon, Name <a@b.com> wrote:\n> Paid Rs.1,000.00\n")
+    assert len(weird) == 2 and weird[1].sent_at is None
+
+
+def test_narrow_nbsp_before_pm():
+    text = "Ok\n\nOn Wed, Feb 18, 2026 at 5:07 PM Name <a@b.com> wrote:\n> x\n"
+    assert _split(text=text)[1].sent_at == datetime(2026, 2, 18, 17, 7, tzinfo=UTC)
+
+
+def test_fingerprint_survives_wrapped_quoted_references():
+    import textwrap
+
+    html_copy = _split(html=chain_html([5]))[1]
+    plain = BeautifulSoup(remittance_html(5), "lxml").get_text("\n")
+    one_line = " ".join(plain.split())
+    quoted = "\n".join("> " + ln for ln in textwrap.wrap(one_line, 40))
+    assert "UTR\n" in quoted.replace("> ", "") or "vide\n" in quoted.replace("> ", "")
+    assert fingerprint(quoted) == html_copy.fingerprint
+
+
+def test_blank_line_header_with_unparseable_sent_is_not_a_boundary():
+    text = (
+        "Dear Sir,\n\nFrom: Accounts Team\n\nSent: by courier\n\nSubject: payment\nPaid Rs.5,000.00"
+    )
+    assert len(_split(text=text)) == 1
+    real = (
+        "Ok\n\nFrom: Tejeswara Rao S\nSent: 18 February 2026 17:07\nTo: X\nSubject: Re: y\n\nhi\n"
+    )
+    assert len(_split(text=real)) == 2
