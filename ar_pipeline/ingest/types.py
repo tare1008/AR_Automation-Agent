@@ -15,6 +15,7 @@ class GraphMessage:
     body_text: str
     has_attachments: bool
     removed: bool = False
+    thread_key: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

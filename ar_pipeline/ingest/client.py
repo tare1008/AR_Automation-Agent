@@ -164,6 +164,7 @@ class HttpGraphClient:
             body_html=content if content_type == "html" else "",
             body_text=content if content_type == "text" else item.get("bodyPreview", ""),
             has_attachments=bool(item.get("hasAttachments", False)),
+            thread_key=item.get("conversationId"),
         )
 
     def download_attachments(self, message_id: str) -> list[GraphAttachment]:

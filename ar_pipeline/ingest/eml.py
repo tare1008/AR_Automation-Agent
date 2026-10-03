@@ -66,6 +66,10 @@ def parse_eml(path: Path) -> tuple[GraphMessage, list[GraphAttachment]]:
             )
         )
 
+    refs = (msg["References"] or "").split()
+    in_reply_to = (msg["In-Reply-To"] or "").strip()
+    thread_key = refs[0] if refs else (in_reply_to or internet_message_id)
+
     message = GraphMessage(
         id=path.stem,
         internet_message_id=internet_message_id,
@@ -75,6 +79,7 @@ def parse_eml(path: Path) -> tuple[GraphMessage, list[GraphAttachment]]:
         body_html=_text(msg.get_body(preferencelist=("html",))),
         body_text=_text(msg.get_body(preferencelist=("plain",))),
         has_attachments=bool(attachments),
+        thread_key=thread_key,
     )
     return message, attachments
 
@@ -102,6 +107,7 @@ def ingest_eml_file(session: Session, blob_store: BlobStore, path: Path) -> Emai
         body_html=message.body_html,
         body_text=message.body_text,
         status="new",
+        thread_key=message.thread_key,
     )
     session.add(email_row)
     session.flush()

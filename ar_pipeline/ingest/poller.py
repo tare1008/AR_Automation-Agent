@@ -73,6 +73,7 @@ def _process_message(
         body_html=message.body_html,
         body_text=message.body_text,
         status="new",
+        thread_key=message.thread_key,
     )
     session.add(email)
     session.flush()  # may raise IntegrityError -> propagates -> savepoint rollback

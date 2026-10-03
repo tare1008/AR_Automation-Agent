@@ -175,8 +175,7 @@ class GmailClient:
             params["pageToken"] = next_token
         return DeltaResult(messages, latest_history_id)
 
-    def _fetch_message(self, message_id: str) -> GraphMessage:
-        item = self._get(f"/messages/{message_id}", params={"format": "full"})
+    def _parse_message(self, item: dict[str, Any]) -> GraphMessage:
         payload = item.get("payload", {})
         headers = payload.get("headers", [])
         parts = _walk_parts(payload)
@@ -213,7 +212,12 @@ class GmailClient:
             body_html=body_html,
             body_text=body_text or item.get("snippet", ""),
             has_attachments=has_attachments,
+            thread_key=item.get("threadId"),
         )
+
+    def _fetch_message(self, message_id: str) -> GraphMessage:
+        item = self._get(f"/messages/{message_id}", params={"format": "full"})
+        return self._parse_message(item)
 
     def download_attachments(self, message_id: str) -> list[GraphAttachment]:
         item = self._get(f"/messages/{message_id}", params={"format": "full"})
