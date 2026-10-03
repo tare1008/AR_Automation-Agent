@@ -168,8 +168,23 @@ def _normalize_sent(raw: str) -> str:
     return _AMPM_FIX_RE.sub(lambda m: " " + m.group(1).upper() + "M", raw)
 
 
+def _offset_tz(raw: str) -> timezone | None:
+    """The explicit GMT/UTC offset in ``raw``, or None when absent or out of range."""
+    m = _OFFSET_RE.search(raw)
+    if not m:
+        return None
+    hours, minutes = int(m.group(2)), int(m.group(3) or 0)
+    if hours > 23 or minutes > 59:
+        return None
+    delta = timedelta(hours=hours, minutes=minutes)
+    try:
+        return timezone(-delta if m.group(1) == "-" else delta)
+    except ValueError:
+        return None
+
+
 def _strptime(raw: str, *, ampm: bool) -> datetime | None:
-    offset = _OFFSET_RE.search(raw)
+    tz = _offset_tz(raw)
     stripped = _TZ_TAIL_RE.sub("", raw)
     for fmt in _DATE_FORMATS:
         if ampm != ("%p" in fmt):
@@ -178,14 +193,19 @@ def _strptime(raw: str, *, ampm: bool) -> datetime | None:
             dt = datetime.strptime(stripped, fmt)
         except ValueError:
             continue
-        if offset:
-            delta = timedelta(hours=int(offset.group(2)), minutes=int(offset.group(3) or 0))
-            dt = dt.replace(tzinfo=timezone(-delta if offset.group(1) == "-" else delta))
-        return dt
+        return dt.replace(tzinfo=tz) if tz else dt
     return None
 
 
 def _parse_sent(raw: str | None) -> datetime | None:
+    """Best-effort date parse; never raises, since splitting must not fail an email."""
+    try:
+        return _parse_sent_unsafe(raw)
+    except Exception:  # noqa: BLE001 - any parse failure just means "no date"
+        return None
+
+
+def _parse_sent_unsafe(raw: str | None) -> datetime | None:
     if not raw:
         return None
     raw = _normalize_sent(raw)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import re
 import time
 from datetime import UTC, datetime, timedelta, timezone
@@ -271,3 +272,39 @@ def test_dotted_pm_and_rfc_named_zone():
     text = "From: A <a@b.com>\nSent: Mon, 12 Jan 2026 10:00:00 EST\nTo: X\nSubject: s\n\nhi\n"
     sent = _split(text=text)[0].sent_at
     assert sent is not None and sent.utcoffset() == timedelta(hours=-5)
+
+
+def test_out_of_range_offset_does_not_crash():
+    gmail = "Ok\n\nOn 18 February 2026 05:07 PM GMT+99, Name <a@b.com> wrote:\n> x\n"
+    outlook = (
+        "Ok\n\nFrom: A B <a@b.com>\nSent: 18 February 2026 05:07 PM GMT+30\nTo: X\n"
+        "Subject: Re: pay\n\nPaid Rs.5,000.00\n"
+    )
+    for text in (gmail, outlook):
+        parts = _split(text=text)
+        assert len(parts) == 2 and parts[1].sender == "a@b.com"
+        sent = parts[1].sent_at
+        assert sent is None or sent.utcoffset() == timedelta(0)
+
+
+def test_random_header_lines_never_raise():
+    rng = random.Random(1234)
+    words = ["GMT", "UTC", "PM", "AM", "at", "Feb", "February", "Wed", "EST", "p.m.", ":", ","]
+
+    def tok() -> str:
+        if rng.random() < 0.5:
+            return str(rng.randint(0, 10 ** rng.randint(1, 5)))
+        return rng.choice(words)
+
+    for _ in range(200):
+        date = " ".join(tok() for _ in range(rng.randint(1, 8)))
+        if rng.random() < 0.5:  # a parseable date so the offset branch is reached
+            hour, minute = rng.randint(0, 99), rng.randint(0, 99)
+            date = f"{rng.randint(1, 40)} February 2026 {hour:02d}:{minute:02d} {rng.choice(words)}"
+        off = f"{rng.choice(['GMT', 'UTC'])}{rng.choice('+-')}{rng.randint(0, 99)}"
+        if rng.random() < 0.5:
+            off += f":{rng.randint(0, 99):02d}"
+        gmail = f"Ok\n\nOn {date} {off}, Name <a@b.com> wrote:\n> x\n"
+        outlook = f"Ok\n\nFrom: A <a@b.com>\nSent: {date} {off}\nTo: X\nSubject: s\n\nhi\n"
+        _split(text=gmail)
+        _split(text=outlook)
