@@ -15,6 +15,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from ar_pipeline.db.models import Extraction, Invoice, InvoicePayment
+from ar_pipeline.ledger.adjustments import adjustment_flags
 from ar_pipeline.ledger.balance import TOLERANCE, balance_for, status_for
 from ar_pipeline.ledger.matching import near_matches, number_key, payers_differ
 from ar_pipeline.ledger.money import format_money
@@ -55,6 +56,8 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
     earlier: dict[str, Decimal] = {}
 
     for i, line in enumerate(payload.line_items):
+        if line.kind == "adjustment":
+            continue
         if not number_key(line.invoice_number):
             continue  # "empty invoice number" is already flagged by validate_payload
         label = f"line {i}: {line.invoice_number}"
@@ -129,6 +132,22 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
                 f"{label} — partial payment {money(settled)} of {money(outstanding)} "
                 "outstanding; invoice amount comes from an email, not your books"
             )
+    for i, line in enumerate(payload.line_items):
+        if line.kind != "adjustment" or not number_key(line.applies_to or ""):
+            continue
+        key = number_key(line.applies_to or "")
+        target = session.scalar(select(Invoice).where(Invoice.number_key == key))
+        if target is None or target.currency != header.currency:
+            continue
+        amount = sum((d.amount for d in line.deductions), Decimal("0"))
+        bal = balance_for(session, target)
+        before = earlier.get(key, Decimal("0"))
+        earlier[key] = before + amount
+        if status_for(target.amount, bal.paid + before) in ("paid", "overpaid"):
+            flags.append(
+                f"line {i}: adjustment reduces {target.invoice_number}, which is already fully paid"
+            )
+    flags.extend(adjustment_flags(session, payload))
     return flags
 
 

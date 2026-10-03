@@ -30,6 +30,18 @@ def line_settled(line: dict) -> Decimal:
     return _dec(line.get("amount_paid")) + sum((_dec(d.get("amount")) for d in deductions), _ZERO)
 
 
+def line_target(line: dict) -> tuple[str, Decimal]:
+    """(invoice number the line settles, amount it settles). An adjustment
+    settles its deductions against the invoice it reduces (``applies_to``)."""
+    if line.get("kind") == "adjustment":
+        deductions = line.get("deductions") or []
+        return (
+            str(line.get("applies_to") or ""),
+            sum((_dec(d.get("amount")) for d in deductions), _ZERO),
+        )
+    return str(line.get("invoice_number") or ""), line_settled(line)
+
+
 def status_for(amount: Decimal, paid: Decimal) -> str:
     outstanding = amount - paid
     if outstanding < -TOLERANCE:
@@ -86,7 +98,8 @@ def awaiting_by_key(session: Session, exclude: uuid.UUID | None = None) -> dict[
     out: dict[str, Decimal] = defaultdict(lambda: _ZERO)
     for ext in session.scalars(query):
         for line in (ext.canonical or {}).get("line_items") or []:
-            key = number_key(str(line.get("invoice_number") or ""))
+            number, settled = line_target(line)
+            key = number_key(number)
             if key:
-                out[key] += line_settled(line)
+                out[key] += settled
     return dict(out)

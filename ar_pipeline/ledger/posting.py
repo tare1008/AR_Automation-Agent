@@ -72,8 +72,16 @@ def post_extraction(session: Session, extraction: Extraction) -> int:
         return 0
     header = payload.header
     posted = 0
-    for i, line in enumerate(payload.line_items):
-        if not number_key(line.invoice_number):
+    indexed = list(enumerate(payload.line_items))
+    ordered = [(i, li) for i, li in indexed if li.kind == "invoice"] + [
+        (i, li) for i, li in indexed if li.kind == "adjustment"
+    ]
+    flushed = False
+    for i, line in ordered:
+        if line.kind == "adjustment" and not flushed:
+            session.flush()  # a same-payment invoice created above must be findable
+            flushed = True
+        if line.kind != "adjustment" and not number_key(line.invoice_number):
             continue
         already = session.scalar(
             select(InvoicePayment.id).where(
@@ -81,6 +89,31 @@ def post_extraction(session: Session, extraction: Extraction) -> int:
             )
         )
         if already is not None:
+            continue
+        if line.kind == "adjustment":
+            amount = sum((d.amount for d in line.deductions), Decimal("0"))
+            target = find_invoice(session, line.applies_to or "")
+            if target is None or amount == 0:
+                # never invent an invoice from an adjustment
+                log.info(
+                    "extraction %s line %s: adjustment has no ledger invoice", extraction.id, i
+                )
+                continue
+            session.add(
+                InvoicePayment(
+                    invoice_id=target.id,
+                    extraction_id=extraction.id,
+                    line_index=i,
+                    kind="adjustment",
+                    amount_paid=Decimal("0"),
+                    deductions_total=amount,
+                    settled=amount,
+                    currency=header.currency,
+                    payment_reference=header.payment_reference,
+                    payment_date=header.payment_date,
+                )
+            )
+            posted += 1
             continue
         deductions = sum((d.amount for d in line.deductions), Decimal("0"))
         settled = line.amount_paid + deductions

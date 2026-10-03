@@ -4,16 +4,19 @@ per-line ledger strip."""
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ar_pipeline.db.models import Email, Extraction, Invoice, InvoicePayment
-from ar_pipeline.ledger.balance import InvoiceBalance, awaiting_by_key, balances, line_settled
+from ar_pipeline.ledger.adjustments import adjustment_suggestions
+from ar_pipeline.ledger.balance import InvoiceBalance, awaiting_by_key, balances, line_target
 from ar_pipeline.ledger.matching import number_key
+from ar_pipeline.schema.canonical import RemittancePayload
 
 _ZERO = Decimal("0")
 
@@ -92,6 +95,7 @@ class LedgerEntry:
     extraction_id: uuid.UUID
     email_id: uuid.UUID
     applied: bool  # False for a different-currency payment (not counted)
+    kind: str = "payment"
 
 
 @dataclass(frozen=True)
@@ -142,6 +146,7 @@ def invoice_detail(session: Session, invoice_id: uuid.UUID) -> InvoiceDetail | N
                 pay.extraction_id,
                 email_id,
                 applied,
+                pay.kind,
             )
         )
     awaiting: list[AwaitingEntry] = []
@@ -152,8 +157,9 @@ def invoice_detail(session: Session, invoice_id: uuid.UUID) -> InvoiceDetail | N
     )
     for ext, subject in pending:
         for line in (ext.canonical or {}).get("line_items") or []:
-            if number_key(str(line.get("invoice_number") or "")) == inv.number_key:
-                awaiting.append(AwaitingEntry(ext.id, subject, line_settled(line)))
+            number, settled = line_target(line)
+            if number_key(number) == inv.number_key:
+                awaiting.append(AwaitingEntry(ext.id, subject, settled))
     return InvoiceDetail(row, inv.note, Decimal(inv.paid_before_import or 0), entries, awaiting)
 
 
@@ -169,6 +175,8 @@ class LineLedger:
     after_this: Decimal | None
     awaiting_elsewhere: Decimal
     suggestions: list[tuple[uuid.UUID, str]]
+    kind: str = "invoice"
+    adjustment_suggestions: list[str] = field(default_factory=list)
 
 
 def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
@@ -180,13 +188,38 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
     awaiting = awaiting_by_key(session, exclude=extraction.id)
     every_invoice: list[Invoice] | None = None
     out: list[LineLedger] = []
-    for line in canonical.get("line_items") or []:
-        number = str(line.get("invoice_number") or "")
+    try:
+        payload: RemittancePayload | None = RemittancePayload.model_validate(canonical)
+    except ValidationError:
+        payload = None
+    for i, line in enumerate(canonical.get("line_items") or []):
+        kind = str(line.get("kind") or "invoice")
+        number, settled = line_target(line)
+        if kind == "adjustment" and not number:
+            out.append(
+                LineLedger(
+                    "",
+                    currency,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    _ZERO,
+                    [],
+                    kind="adjustment",
+                    adjustment_suggestions=(
+                        adjustment_suggestions(session, payload, i) if payload else []
+                    ),
+                )
+            )
+            continue
         key = number_key(number)
         invoice = session.scalar(select(Invoice).where(Invoice.number_key == key)) if key else None
         if invoice is None:
             suggestions: list[tuple[uuid.UUID, str]] = []
-            if key:
+            if key and kind != "adjustment":
                 if every_invoice is None:
                     every_invoice = list(session.scalars(select(Invoice)))
                 suggestions = [
@@ -205,13 +238,14 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
                     None,
                     awaiting.get(key, _ZERO),
                     suggestions,
+                    kind=kind,
                 )
             )
             continue
         bal = balances(session, [invoice])[0]
         # a payment in another currency isn't applied to the balance (spec §1)
         applies = currency == invoice.currency
-        after_this = bal.outstanding - line_settled(line) if applies else bal.outstanding
+        after_this = bal.outstanding - settled if applies else bal.outstanding
         out.append(
             LineLedger(
                 invoice.invoice_number,
@@ -224,6 +258,7 @@ def line_ledgers(session: Session, extraction: Extraction) -> list[LineLedger]:
                 after_this,
                 awaiting.get(key, _ZERO),
                 [],
+                kind=kind,
             )
         )
     return out

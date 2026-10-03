@@ -138,3 +138,28 @@ def post_payment(db_session, make_extraction):
         return row
 
     return _post
+
+
+@pytest.fixture
+def seed_extraction(db_session):
+    """An email + an approved remittance extraction holding `canonical`."""
+
+    def _make(canonical: dict) -> Extraction:
+        email = Email(
+            internet_message_id=f"m-{uuid.uuid4()}",
+            sender_address="a@b.com",
+            sender_domain="b.com",
+            subject="advice",
+            received_at=datetime(2026, 10, 1, tzinfo=UTC),
+            status="done",
+        )
+        db_session.add(email)
+        db_session.flush()
+        ext = Extraction(
+            email_id=email.id, canonical=canonical, is_remittance=True, status="approved"
+        )
+        db_session.add(ext)
+        db_session.flush()
+        return ext
+
+    return _make

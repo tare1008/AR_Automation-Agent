@@ -27,7 +27,7 @@
   {% for e in d.entries %}
   <tr>
     <td>{{ e.payment_date.strftime("%d %b %Y") if e.payment_date else "—" }}</td>
-    <td>{{ e.reference or "—" }}</td>
+    <td>{{ e.reference or "—" }}{% if e.kind == "adjustment" %} <span class="badge">adjustment</span>{% endif %}</td>
     <td class="num">{{ e.amount_paid|money(r.currency) }}</td>
     <td class="num">{{ e.deductions|money(r.currency) }}</td>
     <td class="num">{{ e.settled|money(r.currency) }}{% if not e.applied %} <span class="badge warn">other currency — not counted</span>{% endif %}</td>
