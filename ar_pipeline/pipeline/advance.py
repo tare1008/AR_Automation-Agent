@@ -47,8 +47,13 @@ from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.service import normalize_one
 from ar_pipeline.storage import BlobStore, attachment_blob_key
 from ar_pipeline.threads.memory import all_references_recorded, find_seen_by_fingerprint
-from ar_pipeline.threads.references import find_references
-from ar_pipeline.threads.splitter import MessagePart, split_email
+from ar_pipeline.threads.references import find_references, has_payment_signal
+from ar_pipeline.threads.splitter import (
+    MessagePart,
+    distinct_amounts,
+    flatten_text,
+    split_email,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +158,12 @@ def _split_or_fallback(email: Email) -> list[MessagePart]:
         text = email.body_text or ""
         if not text.strip() and email.body_html:
             text = BeautifulSoup(email.body_html, "lxml").get_text(" ")
+        tables: list[list[list[str]]] = []
+        if email.body_html:
+            try:
+                tables = extract_html_tables(email.body_html).tables
+            except Exception:  # noqa: BLE001
+                logger.exception("table extraction failed for email %s", email.id)
         return [
             MessagePart(
                 position=0,
@@ -160,12 +171,27 @@ def _split_or_fallback(email: Email) -> list[MessagePart]:
                 sent_at=None,
                 raw_header="",
                 body_text=text,
-                tables=[],
+                tables=tables,
                 is_internal=False,
                 has_payment_signal=False,
                 fingerprint=None,
             )
         ]
+
+
+def _references_recorded_rule(session: Session, p: MessagePart) -> bool:
+    """Skip only a message whose every payment is a recorded reference.
+
+    A numeric table, or more distinct amounts than references, means the message may carry
+    payments the references do not account for, so it is read.
+    """
+    if has_numeric_table_rows(p.tables):
+        return False
+    flat = flatten_text(p.body_text)
+    refs = find_references(flat)
+    if not refs or len(distinct_amounts(flat)) > len(refs):
+        return False
+    return all_references_recorded(session, refs)
 
 
 def _ensure_messages(
@@ -196,7 +222,7 @@ def _ensure_messages(
             )
             if match is not None:
                 status, reason, seen_in = "seen", "fingerprint", match.id
-            elif all_references_recorded(session, find_references(p.body_text)):
+            elif _references_recorded_rule(session, p):
                 status, reason = "seen", "references_recorded"
         row = EmailMessage(
             email_id=email.id,
@@ -206,8 +232,8 @@ def _ensure_messages(
             raw_header=p.raw_header,
             is_internal=p.is_internal,
             carries_attachments=carries,
-            body_text=p.body_text if status != "seen" else None,
-            tables=p.tables if status != "seen" else None,
+            body_text=p.body_text,
+            tables=p.tables,
             fingerprint=p.fingerprint,
             status=status,
             seen_reason=reason,
@@ -250,16 +276,14 @@ def _classify(session: Session, email: Email, blob_store: BlobStore) -> str:
         text = m.body_text or ""
         if has_numeric_table_rows(tables):
             specs.append((SourceSpec("body_table", "body"), m.id))
-        elif (
+        elif has_payment_signal(text, tables) or (
             not (m.carries_attachments and live_attachment)
             and len(re.sub(r"\s+", "", text)) >= BODY_TEXT_MIN_CHARS
             and any(ch.isdigit() for ch in text)
         ):
             specs.append((SourceSpec("body_text", "body"), m.id))
     if not any(not s.skipped for s, _ in specs):
-        if all(m.status in ("seen", "no_content") for m in messages) or any(
-            m.status == "seen" for m in messages
-        ):
+        if not atts and all(m.status in ("seen", "no_content") for m in messages):
             email.status = "done"  # everything here is already recorded or empty
             session.flush()
             return "classified"

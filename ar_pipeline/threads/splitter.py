@@ -95,15 +95,23 @@ class _Boundary:
     sent: str | None
 
 
+def flatten_text(body_text: str) -> str:
+    """Collapse line breaks and ``>`` quote prefixes (a quoted copy re-wraps lines)."""
+    return re.sub(r"\s*\n[\s>]*", " ", body_text or "")
+
+
+def distinct_amounts(flat: str) -> set[str]:
+    return {re.sub(r"[^\d.]", "", m.group()) for m in _AMOUNT_RE.finditer(flat)}
+
+
 def fingerprint(body_text: str) -> str | None:
     text = _CAUTION_RE.sub(" ", (body_text or "").lower())
     words = _WORD_RE.findall(text)
     if len(words) < _MIN_FINGERPRINT_WORDS:
         return None
-    # a quoted copy re-wraps lines, which can split "UTR" from its number
-    flat = re.sub(r"\s*\n[\s>]*", " ", body_text or "")
+    flat = flatten_text(body_text)  # can otherwise split "UTR" from its number
     refs = sorted(find_references(flat))
-    amounts = sorted({re.sub(r"[^\d.]", "", m.group()) for m in _AMOUNT_RE.finditer(flat)})
+    amounts = sorted(distinct_amounts(flat))
     material = " ".join(words[:_FINGERPRINT_WORDS]) + "|" + ",".join(refs) + "|" + ",".join(amounts)
     return hashlib.sha256(material.encode()).hexdigest()
 
