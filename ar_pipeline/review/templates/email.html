@@ -39,6 +39,30 @@
 <p class="lede">No extraction yet for this email.</p>
 {% endif %}
 
+{% if view.messages|length > 1 %}
+<h2>Messages in this thread</h2>
+<div class="table-wrap">
+<table class="subtable">
+  <thead><tr><th>#</th><th>From</th><th>Sent</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for m in view.messages %}
+  <tr>
+    <td>{{ m.position }}</td>
+    <td class="truncate" title="{{ m.sender or '' }}">{{ m.sender or "—" }}</td>
+    <td>{{ m.sent_at.strftime("%Y-%m-%d %H:%M") if m.sent_at else "—" }}</td>
+    <td>
+      {% if m.status == "new" %}<span class="badge ok">read</span>
+      {% elif m.status == "seen" %}<span class="badge">seen before{% if m.seen_reason == "references_recorded" %} (references already recorded){% endif %}</span>
+      {% elif m.status == "no_content" %}<span class="badge">internal forward</span>
+      {% else %}<span class="badge bad">failed</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
 <section class="pane" style="margin-top:1rem">
   <h2>Original</h2>
   {% if safe_body_html %}

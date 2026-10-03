@@ -26,6 +26,31 @@
 </div>
 {% endif %}
 
+<h2>Failed messages <small>({{ failed_messages|length }})</small></h2>
+{% if not failed_messages %}<p>No failed messages.</p>{% endif %}
+{% if failed_messages %}
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Received</th><th>Subject</th><th>Message #</th><th>Error</th><th></th></tr></thead>
+  <tbody>
+  {% for m, e in failed_messages %}
+  <tr>
+    <td>{{ e.received_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td class="truncate" title="{{ e.subject }}"><a href="/review/email/{{ e.id }}">{{ e.subject }}</a></td>
+    <td class="num">{{ m.position }}</td>
+    <td><pre class="raw">{{ m.error_detail }}</pre></td>
+    <td>
+      <form method="post" action="/review/messages/{{ m.id }}/retry">
+        <button type="submit">Retry</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
 <h2>Failed deliveries <small>({{ failed_deliveries|length }})</small></h2>
 {% if not failed_deliveries %}<p>No failed deliveries.</p>{% endif %}
 {% if failed_deliveries %}

@@ -19,6 +19,7 @@ from ar_pipeline.db.models import (
     Attachment,
     Delivery,
     Email,
+    EmailMessage,
     Extraction,
     ExtractionEdit,
     ExtractionSource,
@@ -68,6 +69,7 @@ class DetailView:
     raw_extractions: list[dict]
     edits: list[ExtractionEdit]
     skipped_attachments: dict[str, str]
+    message: EmailMessage | None = None
 
 
 def _skipped_attachments(session: Session, email_ids: set[uuid.UUID]) -> dict[str, str]:
@@ -107,6 +109,8 @@ class JourneyRow:
     stage: str
     error_detail: str | None
     extractions: list[JourneyExtraction]
+    failed_message_count: int = 0
+    seen_message_count: int = 0
 
 
 _STAGE_LABELS = {
@@ -176,6 +180,7 @@ class EmailView:
     stage: str
     extractions: list[EmailExtractionSummary]
     skipped_attachments: dict[str, str]
+    messages: list[EmailMessage]
 
 
 def load_email_view(session: Session, email_id: uuid.UUID) -> EmailView:
@@ -211,6 +216,13 @@ def load_email_view(session: Session, email_id: uuid.UUID) -> EmailView:
         stage=_STAGE_LABELS.get(email.status, email.status),
         extractions=extractions,
         skipped_attachments=_skipped_attachments(session, {email.id}),
+        messages=list(
+            session.scalars(
+                select(EmailMessage)
+                .where(EmailMessage.email_id == email.id)
+                .order_by(EmailMessage.position)
+            )
+        ),
     )
 
 
@@ -237,6 +249,14 @@ def list_journey(session: Session) -> list[JourneyRow]:
         .group_by(ExtractionSource.email_id)
     ):
         skipped_count_by_email[email_id] = count
+
+    message_counts: dict[tuple[uuid.UUID, str], int] = {}
+    for email_id, status, count in session.execute(
+        select(EmailMessage.email_id, EmailMessage.status, func.count())
+        .where(EmailMessage.status.in_(("failed", "seen")))
+        .group_by(EmailMessage.email_id, EmailMessage.status)
+    ):
+        message_counts[(email_id, status)] = count
 
     out: list[JourneyRow] = []
     for email, attachment_count in email_rows:
@@ -265,6 +285,8 @@ def list_journey(session: Session) -> list[JourneyRow]:
                 stage=_STAGE_LABELS.get(email.status, email.status),
                 error_detail=email.error_detail,
                 extractions=exts,
+                failed_message_count=message_counts.get((email.id, "failed"), 0),
+                seen_message_count=message_counts.get((email.id, "seen"), 0),
             )
         )
     return out
@@ -497,6 +519,7 @@ def load_detail(session: Session, extraction_id: uuid.UUID) -> DetailView:
         [dict(r) for r in raws],
         edits,
         _skipped_attachments(session, {email.id}),
+        message=session.get(EmailMessage, ext.email_message_id) if ext.email_message_id else None,
     )
 
 
@@ -780,5 +803,40 @@ def retry_email(session: Session, email_id: uuid.UUID) -> None:
         .where(ExtractionSource.email_id == email_id)
     )
     email.status = "classified" if has_sources else "new"
+    email.error_detail = None
+    for m in session.scalars(
+        select(EmailMessage).where(
+            EmailMessage.email_id == email_id, EmailMessage.status == "failed"
+        )
+    ):
+        m.status = "new"
+        m.error_detail = None
+    session.flush()
+
+
+def list_failed_messages(session: Session) -> list[tuple[EmailMessage, Email]]:
+    """Every failed message, whatever its email's status: an email can end `done`
+    with one failed message among otherwise fine ones."""
+    rows = session.execute(
+        select(EmailMessage, Email)
+        .join(Email, EmailMessage.email_id == Email.id)
+        .where(EmailMessage.status == "failed")
+        .order_by(Email.received_at.asc(), EmailMessage.position.asc())
+    ).all()
+    return [(m, e) for m, e in rows]
+
+
+def retry_message(session: Session, message_id: uuid.UUID) -> None:
+    m = session.get(EmailMessage, message_id)
+    if m is None:
+        raise ReviewError("message not found")
+    if m.status != "failed":
+        raise ReviewError(f"message is {m.status}, not failed")
+    email = session.get(Email, m.email_id)
+    assert email is not None  # FK guarantees it
+    m.status = "new"
+    m.error_detail = None
+    # `extracted` is the status the scheduler's normalize step picks up (advance._step)
+    email.status = "extracted"
     email.error_detail = None
     session.flush()

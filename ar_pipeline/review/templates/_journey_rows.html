@@ -35,6 +35,8 @@
         <span class="secondary truncate">{{ r.sender_address }}
           {%- if r.attachment_count %} &middot; {{ r.attachment_count }} attachment{{ "s" if r.attachment_count != 1 else "" }}{% endif %}</span>
         {% if r.skipped_attachment_count %}<span class="skipped-note">{{ r.skipped_attachment_count }} attachment{{ "s" if r.skipped_attachment_count != 1 else "" }} not read</span>{% endif %}
+        {% if r.failed_message_count %}<span class="skipped-note">{{ r.failed_message_count }} message{{ "s" if r.failed_message_count != 1 else "" }} failed</span>{% endif %}
+        {% if r.seen_message_count %}<span class="seen-note">{{ r.seen_message_count }} seen before</span>{% endif %}
       </a>
     </td>
     <td>

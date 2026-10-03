@@ -28,12 +28,18 @@
 {% if view.extraction.validation_flags %}
 <p role="alert">{% for f in view.extraction.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>
 {% endif %}
+{% if view.extraction.historical_reason == "earlier_message" %}<span class="badge warn">Historical: earlier message</span>{% elif view.extraction.historical_reason == "before_go_live" %}<span class="badge warn">Historical: before go-live</span>{% endif %}
+{% if view.extraction.duplicate_of_id %}<a class="badge" href="/review/{{ view.extraction.duplicate_of_id }}">Linked to payment {{ view.extraction.duplicate_of_id|string|truncate(8, True, "") }}…</a>{% endif %}
 {% if not view.extraction.is_remittance %}<span class="badge bad">LLM: not a remittance</span>{% endif %}
 
 <div class="detail">
   <section class="pane">
     <h2>Original</h2>
-    {% if safe_body_html %}
+    {% if view.message %}
+      <p class="lede">This payment came from message {{ view.message.position }} of the thread
+        ({{ view.message.sender or "unknown sender" }}). <a href="/review/email/{{ view.email.id }}">Show full thread</a></p>
+      <pre class="raw">{{ view.message.raw_header }}{{ view.message.body_text or "" }}</pre>
+    {% elif safe_body_html %}
       <iframe class="original" sandbox srcdoc="{{ safe_body_html }}"></iframe>
     {% else %}
       <pre class="raw">{{ view.email.body_text }}</pre>

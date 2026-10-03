@@ -227,6 +227,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .cell-stack .primary { color: var(--text); font-weight: 600; }
 .cell-stack .secondary { color: var(--text-muted); font-size: .8rem; }
 .cell-stack .skipped-note { color: var(--warn); font-size: .8rem; font-weight: 600; }
+.cell-stack .seen-note { color: var(--text-muted); font-size: .8rem; }
 /* A cell-stack that is itself the clickable target (e.g. "open this
    email") stays styled like plain cell content, not an underlined link —
    the row hover and a subtle primary-line color shift are the affordance. */
