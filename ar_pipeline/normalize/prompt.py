@@ -13,7 +13,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "3"
+PROMPT_VERSION = "4"
 
 _MAX_USER_CHARS = 40_000
 _TRUNCATION_MARKER = "\n\n[... content truncated ...]"
@@ -66,8 +66,10 @@ write "$" or "US$" as USD, "€" as EUR, "£" as GBP, "₹" / "Rs" / "Rupees" as
 INR. It defaults to INR when the material does not say otherwise. \
 `payment_reference` is the bank UTR / RTGS / NEFT reference if one is present, \
 otherwise null; `payment_reference_type` is one of "utr", "rtgs", "neft", \
-"request_number", "cheque", or null. Many advices carry no bank reference at \
-all — that is fine, leave both null.
+"request_number", "cheque", "payer_document", or null. When the advice has no \
+bank reference but shows the payer's own document number (e.g. "Document No : \
+1500005408"), put that number in `payment_reference` with type "payer_document". \
+Many advices carry no bank reference at all — that is fine, leave both null.
 
 `vendor_guess` is the vendor / remitter's name as best you can tell from the \
 content. `payer_id` is the payer's customer / vendor code if the advice shows \

@@ -82,6 +82,6 @@ def test_fixture_flows_to_review(name, db_session, tmp_path):
     rows = db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)).all()
     assert rows
     assert all(r.status == "pending_review" for r in rows)
-    assert all(r.prompt_version == "3" for r in rows)
+    assert all(r.prompt_version == "4" for r in rows)
     # _generic_output() always yields a remittance -> every row has a canonical header.
     assert all(r.canonical.get("header") for r in rows)

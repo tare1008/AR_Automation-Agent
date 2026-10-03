@@ -58,6 +58,11 @@ def _payer_words(name: str | None) -> str:
     return " ".join(w for w in cleaned.split() if w not in _PAYER_STOPWORDS)
 
 
+def payer_slug(name: str | None) -> str:
+    """Payer identity for keys: the normalised payer words joined by '-'."""
+    return _payer_words(name).replace(" ", "-")
+
+
 def payers_differ(a: str | None, b: str | None) -> bool:
     """True only when both names are present and clearly different companies."""
     wa, wb = _payer_words(a), _payer_words(b)

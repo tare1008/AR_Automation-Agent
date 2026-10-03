@@ -16,7 +16,15 @@ from ar_pipeline.schema.canonical import RemittancePayload
 
 CHECK_VERSION = "3"
 
-_KNOWN_REFERENCE_TYPES = {"utr", "rtgs", "neft", "imps", "request_number", "cheque"}
+_KNOWN_REFERENCE_TYPES = {
+    "utr",
+    "rtgs",
+    "neft",
+    "imps",
+    "request_number",
+    "cheque",
+    "payer_document",
+}
 _TOLERANCE = Decimal("0.02")
 _MAX_BACKDATE = timedelta(days=400)
 _FUTURE_GRACE = timedelta(days=2)
