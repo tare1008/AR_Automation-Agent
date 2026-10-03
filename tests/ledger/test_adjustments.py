@@ -128,3 +128,36 @@ def test_posting_applies_adjustments_to_their_invoice(db_session, seed_extractio
         )
         is None
     )
+
+
+def test_adjustment_cross_currency_flag(db_session, make_invoice):
+    make_invoice("CBB2510004583", amount="1000.00", currency="USD")
+    payload = RemittancePayload.model_validate(
+        _payload(_adjustment("2510004583DISCO", "50.00", applies_to="CBB2510004583"))
+    )
+    flags = check_against_ledger(db_session, payload)
+    assert (
+        "line 1: adjustment of ₹50.00 — payment in INR, invoice in USD; not applied to the balance"
+        in flags
+    )
+
+
+def test_adjustment_overpay_flag(db_session, make_invoice):
+    make_invoice("CBB2510004583", amount="1000.00", paid_before_import="980")
+    c = canonical_for(invoice_number="OTHER-1", invoice_amount="10.00", amount_paid="10.00")
+    c["line_items"].append(_adjustment("2510004583DISCO", "50.00", applies_to="CBB2510004583"))
+    payload = RemittancePayload.model_validate(c)
+    flags = check_against_ledger(db_session, payload)
+    assert (
+        "line 1: adjustment reduces CBB2510004583 by ₹50.00 but only ₹20.00 outstanding; "
+        "overpaid by ₹30.00" in flags
+    )
+
+
+def test_posting_adjustments_is_idempotent(db_session, seed_extraction):
+    ext = seed_extraction(
+        _payload(_adjustment("2510004583DISCO", "50.00", applies_to="CBB2510004583"))
+    )
+    assert post_extraction(db_session, ext) == 2
+    assert post_extraction(db_session, ext) == 0
+    assert db_session.query(InvoicePayment).count() == 2

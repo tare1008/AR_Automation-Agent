@@ -136,16 +136,31 @@ def check_against_ledger(session: Session, payload: RemittancePayload) -> list[s
         if line.kind != "adjustment" or not number_key(line.applies_to or ""):
             continue
         key = number_key(line.applies_to or "")
-        target = session.scalar(select(Invoice).where(Invoice.number_key == key))
-        if target is None or target.currency != header.currency:
+        target = session.scalar(select(Invoice).where(Invoice.number_key == key).with_for_update())
+        if target is None:
             continue
         amount = sum((d.amount for d in line.deductions), Decimal("0"))
+        if target.currency != header.currency:
+            flags.append(
+                f"line {i}: adjustment of {format_money(amount, header.currency)} — "
+                f"payment in {header.currency}, invoice in {target.currency}; "
+                "not applied to the balance"
+            )
+            continue
         bal = balance_for(session, target)
         before = earlier.get(key, Decimal("0"))
         earlier[key] = before + amount
         if status_for(target.amount, bal.paid + before) in ("paid", "overpaid"):
             flags.append(
                 f"line {i}: adjustment reduces {target.invoice_number}, which is already fully paid"
+            )
+        elif amount > bal.outstanding - before + TOLERANCE:
+            outstanding = bal.outstanding - before
+            flags.append(
+                f"line {i}: adjustment reduces {target.invoice_number} by "
+                f"{format_money(amount, target.currency)} but only "
+                f"{format_money(outstanding, target.currency)} outstanding; overpaid by "
+                f"{format_money(amount - outstanding, target.currency)}"
             )
     flags.extend(adjustment_flags(session, payload))
     return flags
