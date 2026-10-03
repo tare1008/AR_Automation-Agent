@@ -36,7 +36,9 @@ def test_parse_returns_validated_model():
     assert kwargs["model"] == "claude-opus-5"
     assert kwargs["output_format"] is _Out
     assert kwargs["messages"][0]["content"] == "u"
-    assert kwargs["system"] == "s"
+    assert kwargs["system"] == [
+        {"type": "text", "text": "s", "cache_control": {"type": "ephemeral"}}
+    ]
 
 
 def test_parse_raises_on_refusal():

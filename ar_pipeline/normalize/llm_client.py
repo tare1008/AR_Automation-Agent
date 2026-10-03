@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Protocol, TypeVar
 
 import pydantic
 from pydantic import BaseModel
 
 from ar_pipeline.config import get_settings
+
+log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import anthropic
@@ -52,7 +55,15 @@ class AnthropicLLMClient:
             response = self._get_client().messages.parse(
                 model=self._model,
                 max_tokens=16000,
-                system=system,
+                # one AI call per thread message: the identical instructions are
+                # cached, so calls 2..N of a thread read them at ~0.1x the price.
+                system=[
+                    {
+                        "type": "text",
+                        "text": system,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=[{"role": "user", "content": user}],
                 output_format=output_model,
             )
@@ -67,6 +78,14 @@ class AnthropicLLMClient:
 
         if response.stop_reason == "max_tokens":
             raise LLMTruncated("LLM output hit the max_tokens limit")
+
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            log.debug(
+                "llm cache: read=%s created=%s",
+                getattr(usage, "cache_read_input_tokens", None),
+                getattr(usage, "cache_creation_input_tokens", None),
+            )
 
         parsed = response.parsed_output
         if parsed is None:
