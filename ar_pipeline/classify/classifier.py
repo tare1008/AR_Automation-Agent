@@ -52,7 +52,7 @@ _NUMERIC_CELL_RE = re.compile(
 
 _INLINE_IMAGE_MAX_SIZE = 25_000
 _PDF_TEXT_MIN_CHARS = 20
-_BODY_TEXT_MIN_CHARS = 120
+BODY_TEXT_MIN_CHARS = 120
 
 
 @dataclass(frozen=True)
@@ -151,6 +151,14 @@ def _classify_attachment(att: Attachment, blob_store: BlobStore) -> SourceSpec:
     )
 
 
+def has_numeric_table_rows(tables: list[list[list[str]]]) -> bool:
+    for table in tables:
+        cells = [c for row in table for c in row]
+        if sum(1 for c in cells if _NUMERIC_CELL_RE.search(c)) >= 2:
+            return True
+    return False
+
+
 def _body_text(email: Email) -> str:
     if email.body_text and email.body_text.strip():
         return email.body_text
@@ -183,7 +191,7 @@ def _classify_body(email: Email, has_live_attachment_source: bool) -> SourceSpec
         return None  # a prose cover note alongside an attachment is not a source
 
     text = _body_text(email)
-    if _non_ws_len(text) >= _BODY_TEXT_MIN_CHARS and any(ch.isdigit() for ch in text):
+    if _non_ws_len(text) >= BODY_TEXT_MIN_CHARS and any(ch.isdigit() for ch in text):
         return SourceSpec("body_text", _BODY_REF)
 
     return None

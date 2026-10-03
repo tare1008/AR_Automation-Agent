@@ -14,14 +14,29 @@ blocking vision call never pins a connection across the whole batch.
 
 from __future__ import annotations
 
+import logging
+import re
 import uuid
 from dataclasses import dataclass
 
+from bs4 import BeautifulSoup
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ar_pipeline.classify.classifier import classify_email
-from ar_pipeline.db.models import Attachment, Email, ExtractionSource, RawExtraction
+from ar_pipeline.classify.classifier import (
+    BODY_TEXT_MIN_CHARS,
+    SourceSpec,
+    classify_email,
+    has_numeric_table_rows,
+)
+from ar_pipeline.config import get_settings
+from ar_pipeline.db.models import (
+    Attachment,
+    Email,
+    EmailMessage,
+    ExtractionSource,
+    RawExtraction,
+)
 from ar_pipeline.extract.base import EXTRACTOR_VERSION, ExtractedContent
 from ar_pipeline.extract.body_text import extract_body_text
 from ar_pipeline.extract.excel import extract_excel
@@ -31,6 +46,11 @@ from ar_pipeline.extract.vision import VisionExtractor
 from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.service import normalize_one
 from ar_pipeline.storage import BlobStore, attachment_blob_key
+from ar_pipeline.threads.memory import all_references_recorded, find_seen_by_fingerprint
+from ar_pipeline.threads.references import find_references
+from ar_pipeline.threads.splitter import MessagePart, split_email
+
+logger = logging.getLogger(__name__)
 
 _PENDING_STATUSES = ("new", "classified", "extracted")
 
@@ -114,19 +134,152 @@ def _normalize(session: Session, email: Email, llm_client: LLMClient) -> str:
     return "normalized"
 
 
+def _no_content(p: MessagePart) -> bool:
+    return (p.is_internal and not p.has_payment_signal) or not p.body_text.strip()
+
+
+def _split_or_fallback(email: Email) -> list[MessagePart]:
+    """Split the body into messages; any splitter failure means one whole-body message."""
+    try:
+        return split_email(
+            body_html=email.body_html,
+            body_text=email.body_text,
+            sender=email.sender_address,
+            received_at=email.received_at,
+            client_domains=get_settings().client_domain_list(),
+        )
+    except Exception:  # noqa: BLE001 -- splitting must never error an email
+        logger.exception("thread split failed for email %s; using the whole body", email.id)
+        text = email.body_text or ""
+        if not text.strip() and email.body_html:
+            text = BeautifulSoup(email.body_html, "lxml").get_text(" ")
+        return [
+            MessagePart(
+                position=0,
+                sender=None,
+                sent_at=None,
+                raw_header="",
+                body_text=text,
+                tables=[],
+                is_internal=False,
+                has_payment_signal=False,
+                fingerprint=None,
+            )
+        ]
+
+
+def _ensure_messages(
+    session: Session, email: Email, attachments: list[Attachment]
+) -> list[EmailMessage]:
+    existing = list(
+        session.scalars(
+            select(EmailMessage)
+            .where(EmailMessage.email_id == email.id)
+            .order_by(EmailMessage.position)
+        )
+    )
+    if existing:  # reprocess / retry: never re-split, never self-match
+        return existing
+    parts = _split_or_fallback(email)
+    carrier = next((p.position for p in parts if not _no_content(p)), 0) if attachments else None
+    rows: list[EmailMessage] = []
+    for p in parts:
+        carries = carrier is not None and p.position == carrier
+        status, reason, seen_in = "new", None, None
+        if not carries and _no_content(p):
+            status = "no_content"
+        elif not carries and p.has_payment_signal:
+            match = (
+                find_seen_by_fingerprint(session, email_id=email.id, fingerprint=p.fingerprint)
+                if p.fingerprint
+                else None
+            )
+            if match is not None:
+                status, reason, seen_in = "seen", "fingerprint", match.id
+            elif all_references_recorded(session, find_references(p.body_text)):
+                status, reason = "seen", "references_recorded"
+        row = EmailMessage(
+            email_id=email.id,
+            position=p.position,
+            sender=p.sender,
+            sent_at=p.sent_at,
+            raw_header=p.raw_header,
+            is_internal=p.is_internal,
+            carries_attachments=carries,
+            body_text=p.body_text if status != "seen" else None,
+            tables=p.tables if status != "seen" else None,
+            fingerprint=p.fingerprint,
+            status=status,
+            seen_reason=reason,
+            seen_in_message_id=seen_in,
+        )
+        session.add(row)
+        rows.append(row)
+    if not rows:  # empty body: one row so attachments still have a home
+        row = EmailMessage(
+            email_id=email.id,
+            position=0,
+            sender=email.sender_address.lower(),
+            sent_at=email.received_at,
+            raw_header="",
+            is_internal=False,
+            carries_attachments=bool(attachments),
+            body_text="",
+            tables=[],
+            status="new",
+        )
+        session.add(row)
+        rows.append(row)
+    session.flush()
+    return rows
+
+
 def _classify(session: Session, email: Email, blob_store: BlobStore) -> str:
     atts = list(session.scalars(select(Attachment).where(Attachment.email_id == email.id)))
+    messages = _ensure_messages(session, email, atts)
+    carrier = next((m for m in messages if m.carries_attachments), None)
+    specs: list[tuple[SourceSpec, uuid.UUID | None]] = []
     for spec in classify_email(email, atts, blob_store):
+        if spec.ref != "body":  # attachments; the email-level body spec is replaced below
+            specs.append((spec, carrier.id if carrier else None))
+    live_attachment = any(not s.skipped for s, _ in specs)
+    for m in messages:
+        if m.status != "new":
+            continue
+        tables = m.tables or []
+        text = m.body_text or ""
+        if has_numeric_table_rows(tables):
+            specs.append((SourceSpec("body_table", "body"), m.id))
+        elif (
+            not (m.carries_attachments and live_attachment)
+            and len(re.sub(r"\s+", "", text)) >= BODY_TEXT_MIN_CHARS
+            and any(ch.isdigit() for ch in text)
+        ):
+            specs.append((SourceSpec("body_text", "body"), m.id))
+    if not any(not s.skipped for s, _ in specs):
+        if all(m.status in ("seen", "no_content") for m in messages) or any(
+            m.status == "seen" for m in messages
+        ):
+            email.status = "done"  # everything here is already recorded or empty
+            session.flush()
+            return "classified"
+        specs.append(
+            (
+                SourceSpec("body_text", "body", skipped=True, skip_reason="no extractable content"),
+                None,
+            )
+        )
+    for spec, message_id in specs:
         session.add(
             ExtractionSource(
                 email_id=email.id,
+                email_message_id=message_id,
                 kind=spec.kind,
                 ref=spec.ref,
                 skipped=spec.skipped,
                 skip_reason=spec.skip_reason,
             )
         )
-    session.flush()
     email.status = "classified"
     session.flush()
     return "classified"
@@ -200,6 +353,14 @@ def _run_extractor(
     blob_store: BlobStore,
     vision_extractor: VisionExtractor,
 ) -> ExtractedContent:
+    if src.ref == "body" and src.email_message_id is not None:
+        msg = session.get(EmailMessage, src.email_message_id)
+        if msg is None:
+            raise ValueError(f"extraction_source {src.id} references a missing message")
+        tables = (msg.tables or []) if src.kind == "body_table" else []
+        return ExtractedContent(
+            text=msg.body_text or "", tables=tables, meta={"email_message_id": str(msg.id)}
+        )
     if src.ref == "body":
         if src.kind == "body_table":
             return extract_html_tables(email.body_html)
