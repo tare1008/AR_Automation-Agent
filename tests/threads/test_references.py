@@ -109,11 +109,17 @@ def test_find_references_stacked_qualifiers(text, refs):
     assert find_references(text) == refs
 
 
-# R7 fix: space-grouped references (issue 3)
-def test_find_references_space_grouped():
-    """Test that spaces within tokens are preserved and normalized."""
-    assert find_references("UTR HDFC5202 6092 7001 18") == {"HDFC52026092700118"}
-    assert find_references("UTR HDFC52026092700118 dated 18.02") == {"HDFC52026092700118"}
+# R8 fix: space-grouped references removed (issue 3)
+def test_find_references_space_grouped_not_matched():
+    """Test that spaces break token matching (R8: no space-grouping)."""
+    # Space-grouped tokens should not be merged into one reference.
+    # Truncated references only cause extra AI calls (safe direction).
+    result = find_references("UTR HDFC5202 6092 7001 18")
+    assert "HDFC52026092700118" not in result, (
+        "Space-separated tokens should not be merged (R8 ruling)"
+    )
+    # Either no match or a truncated match (e.g., HDFC5202) is acceptable
+    assert result == {"HDFC5202"} or result == set()
 
 
 # R7 fix: lowercase words rejection (issue 4)
@@ -121,6 +127,20 @@ def test_find_references_lowercase_rejected():
     """Test that lowercase tokens are rejected."""
     assert find_references("RTGS payment2024abc") == set()
     assert find_references("RTGS Payment2024ABC") == set()
+
+
+# R8 fix: regression tests for standalone numbers gluing to references
+@pytest.mark.parametrize(
+    ("text", "refs"),
+    [
+        ("UTR no.PUNBR52026021813360279 1 invoice", {"PUNBR52026021813360279"}),
+        ("UTR HDFC52026092700118 18.02.2026", {"HDFC52026092700118"}),
+        ("UTR 123456789012 1000 rupees", {"123456789012"}),
+    ],
+)
+def test_find_references_no_number_gluing_r8(text, refs):
+    """R8: standalone numbers should not glue onto references."""
+    assert find_references(text) == refs
 
 
 # R7 fix: catastrophic backtracking performance (issue 1)

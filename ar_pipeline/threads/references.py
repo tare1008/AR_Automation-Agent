@@ -11,18 +11,17 @@ from ar_pipeline.ledger.matching import payer_slug
 # keyword-anchored only: bare code-shaped tokens include invoice numbers
 # (JHMUR2510007033), which would make the "all references recorded" check
 # never fire. Bounded whitespace prevents catastrophic backtracking. Scoped
-# case-insensitive for keywords only; token is case-sensitive (digits/uppercase
-# only). Spaces allowed inside token only when followed by digit.
+# case-insensitive for keywords only; token is case-sensitive (digits/uppercase/hyphens only).
 # Regex structure:
 # 1. Keyword: UTR|RTGS|NEFT|IMPS (case-insensitive)
 # 2. Optional: modifiers (no|number|ref|reference) with bounded whitespace
 # 3. Optional: separator (:/#/-/.) with optional modifiers after
-# 4. Token: case-sensitive, uppercase/digits/hyphens, space only before digit
+# 4. Token: case-sensitive, uppercase/digits/hyphens only (no spaces)
 _REF_RE = re.compile(
     r"(?i:UTR|RTGS|NEFT|IMPS)\b"
     r"(?:[ \t/]+(?:(?i:no|number|ref(?:erence)?)\b\.?[ \t/]*)*)?[ \t]{0,3}"
     r"[:#.\-]?[ \t]{0,3}(?:(?i:no|number|ref(?:erence)?)\b\.?[ \t/]*)*"
-    r"((?=[A-Z0-9 \-]{0,40}\d)[A-Z0-9](?:[A-Z0-9\-]|[ ](?=[A-Z0-9])){6,40}[A-Z0-9])"
+    r"((?=[A-Z0-9\-]{0,40}\d)[A-Z0-9](?:[A-Z0-9\-]){6,40}[A-Z0-9])"
 )
 _AMOUNT_RE = re.compile(
     r"(?<!\d[./])\b\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?\b|(?<![\d.])\d+\.\d{2}(?![.\d])"
