@@ -13,6 +13,7 @@ from decimal import Decimal
 from ar_pipeline.schema.canonical import Deduction, LineItem
 from ar_pipeline.tables.models import ColumnAssignment, MappingOutput
 from ar_pipeline.tables.numbers import parse_amount, parse_date
+from ar_pipeline.tables.totals import TOTALS_TOLERANCE
 
 MIN_DATA_ROWS = 6
 _HEADER_SCAN = 5  # the header is looked for in a table's first five non-blank rows
@@ -65,10 +66,17 @@ def _is_header(row: list[str]) -> bool:
     )
 
 
+def _has_figures(row: list[str]) -> bool:
+    return any(parse_amount(c) is not None for c in row if c.strip())
+
+
 def _header_at(rows: list[list[str]]) -> int | None:
-    """The header is the first of the first rows that reads like column names;
-    banner rows above it (a sheet title, "In case of …") are not the header."""
-    return next((i for i, r in enumerate(rows[:_HEADER_SCAN]) if _is_header(r)), None)
+    """The header is the last row reading like column names that sits above the
+    first row of figures, within the table's first rows; banners and other
+    heading rows above it (a sheet title, "In case of …") are dropped."""
+    figures = next((i for i, r in enumerate(rows) if _has_figures(r)), len(rows))
+    names = [i for i in range(min(_HEADER_SCAN, figures)) if _is_header(rows[i])]
+    return names[-1] if names else None
 
 
 def find_line_table(raws: list[dict]) -> LineTable | None:
@@ -198,12 +206,28 @@ def _abs(raw: str) -> Decimal:
     return abs(value) if value is not None else _ZERO
 
 
+def _is_sum_row(sources: list[list[str]], lines: list[LineItem], cols: ColumnMap) -> bool:
+    """An unlabelled total: the last line's row has no invoice number and each of
+    its amount-paid / invoice-amount figures equals the column's sum above it."""
+    if len(lines) < 2 or _get(sources[-1], cols, "invoice_number"):
+        return False
+    above = lines[:-1]
+    sums = {
+        "amount_paid": sum((li.amount_paid for li in above), _ZERO),
+        "invoice_amount": sum((li.invoice_amount for li in above), _ZERO),
+    }
+    figures = {r: parse_amount(_get(sources[-1], cols, r)) for r in sums}
+    present = {r: v for r, v in figures.items() if v is not None}
+    return bool(present) and all(abs(v - sums[r]) <= TOTALS_TOLERANCE for r, v in present.items())
+
+
 def apply_mapping(table: LineTable, cols: ColumnMap) -> MappedTable:
     if "payment_reference" in cols:
         refs = {_get(r, cols, "payment_reference") for r in table.rows} - {""}
         if len(refs) > 1:
             raise MappingError("rows carry different bank references — several payments")
     lines: list[LineItem] = []
+    sources: list[list[str]] = []  # the row each line was read from
     for row in table.rows:
         number = _get(row, cols, "invoice_number")
         gross = parse_amount(_get(row, cols, "invoice_amount"))
@@ -237,6 +261,7 @@ def apply_mapping(table: LineTable, cols: ColumnMap) -> MappedTable:
                     kind="adjustment",
                 )
             )
+            sources.append(row)
             continue
         deductions = [
             Deduction(type=t, amount=a)
@@ -255,12 +280,17 @@ def apply_mapping(table: LineTable, cols: ColumnMap) -> MappedTable:
                 amount_paid=amount_paid,
             )
         )
+        sources.append(row)
+    total_row = table.total_row
+    if total_row is None and _is_sum_row(sources, lines, cols):
+        total_row = sources[-1]
+        lines.pop()
     if not lines:
         raise MappingError("no line rows")
     totals: dict[str, Decimal] = {}
-    if table.total_row is not None:
+    if total_row is not None:
         for role in ("invoice_amount", "tds", "adjustment", "amount_paid"):
-            value = parse_amount(_get(table.total_row, cols, role))
+            value = parse_amount(_get(total_row, cols, role))
             if value is not None:
                 totals[role] = abs(value) if role in ("tds", "adjustment") else value
     return MappedTable(lines, totals)

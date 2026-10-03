@@ -210,3 +210,86 @@ def test_banner_rows_above_the_header_are_dropped():
 def test_table_without_a_header_row_is_skipped():
     rows = [[f"B{i}", "10.00", "0", "10.00"] for i in range(8)]
     assert find_line_table([{"text": "", "tables": [rows]}]) is None
+
+
+def test_header_is_the_last_name_row_above_the_first_figures():
+    header = ["Inv no", "Inv Date", "Inv Amount", "TDS amount", "Net amount Remitted"]
+    rows = [[f"Z{i}", "2026-04-30", "100", "0.1", "99.9"] for i in range(6)]
+    table = find_line_table(
+        [
+            {
+                "text": "",
+                "tables": [
+                    [
+                        ["In case of Advance from Customer", "", "", "", ""],
+                        ["Date of Advance", "Amount of Advance", "TDS Amount", "Net", "UTR"],
+                        ["In case of Payment against invoices", "", "", "", ""],
+                        header,
+                        *rows,
+                    ]
+                ],
+            }
+        ]
+    )
+    assert table is not None and table.header == header and len(table.rows) == 6
+
+
+def _sum_row_table():
+    # modelled on a forwarded body table: banner, header, invoices, an unlabelled
+    # column-sum row, then the TDS and net-remitted note rows
+    header = ["S.No", "Invoice date", "Invoice Number", "Qty", "Original", "Balance Due"]
+    rows = [
+        [str(i + 1), "2-Feb-26", f"FCI25100070{i:02d}", "39.7", "1,000.00", "1,000.00"]
+        for i in range(6)
+    ]
+    rows += [
+        ["", "", "", "238.2", "6,000.00", "6,000.00"],
+        ["LESS: IT TDS on Goods 194Q (0.1%)", "6.00", ""],
+        ["NET AMOUNT REMITTED", "5,994.00", ""],
+    ]
+    return find_line_table(
+        [{"text": "", "tables": [[["INVOICES DETAILS FOR PAYMENT"], header, *rows]]}]
+    )
+
+
+def test_unlabelled_sum_row_is_the_total_row():
+    cols = {"invoice_date": 1, "invoice_number": 2, "invoice_amount": 4, "amount_paid": 5}
+    mapped = apply_mapping(_sum_row_table(), cols)
+    assert len(mapped.lines) == 6 and all(li.invoice_number for li in mapped.lines)
+    assert mapped.column_totals == {
+        "invoice_amount": Decimal("6000.00"),
+        "amount_paid": Decimal("6000.00"),
+    }
+
+
+def test_blank_numbered_row_that_is_not_the_sum_stays_a_line():
+    header = ["Bill No", "Gross Amount", "Net Payment"]
+    rows = [[f"B{i}", "10.00", "10.00"] for i in range(6)] + [["", "5.00", "5.00"]]
+    mapped = apply_mapping(_table(header, rows), keyword_mapping(header))
+    assert len(mapped.lines) == 7 and mapped.column_totals == {}
+
+
+def test_fixture_02_body_table_reads_without_its_sum_row():
+    import email
+    import email.policy
+    from pathlib import Path
+
+    from ar_pipeline.extract.html_table import extract_html_tables
+
+    eml = Path(__file__).parents[1] / "fixtures" / "emails" / "02_fwd_body_table.eml"
+    msg = email.message_from_bytes(eml.read_bytes(), policy=email.policy.default)
+    raws = [extract_html_tables(msg.get_body(("html",)).get_content()).to_payload()]
+    table = find_line_table(raws)
+    assert table is not None and table.header[2] == "Invoice Number"
+    out = MappingOutput(
+        is_line_table=True,
+        columns=[
+            ColumnAssignment(index=1, role="invoice_date"),
+            ColumnAssignment(index=2, role="invoice_number"),
+            ColumnAssignment(index=6, role="invoice_amount"),
+            ColumnAssignment(index=7, role="amount_paid"),
+        ],
+    )
+    mapped = apply_mapping(table, validate_mapping(out, table.header))
+    assert len(mapped.lines) == 13 and all(li.invoice_number for li in mapped.lines)
+    assert mapped.column_totals["invoice_amount"] == Decimal("17832128.14")

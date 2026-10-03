@@ -7,7 +7,7 @@ from sqlalchemy import select
 from ar_pipeline.db.models import ColumnMapping
 from ar_pipeline.extract.pdf import extract_pdf
 from ar_pipeline.normalize.stub_client import StubLLMClient
-from ar_pipeline.tables.mapping import mapping_output
+from ar_pipeline.tables.mapping import find_line_table, header_signature, mapping_output
 from ar_pipeline.tables.models import HeaderOutput, MappingOutput
 from ar_pipeline.tables.reader import read_by_table
 from tests.normalize.llm_fake import FakeLLMClient
@@ -210,6 +210,10 @@ def test_banner_and_zero_padding_sheet_reads_only_the_real_invoices(db_session):
     lines = read.payments[0].payload.line_items
     assert [li.invoice_number for li in lines] == ["ZCC2610000038", "ZCC2610000037"]
     assert read.payments[0].payload.header.total_paid_amount == Decimal("9433014.543")
+    table = find_line_table(_excel_raws())
+    assert table is not None and table.header[0] == "Inv no"
+    saved = db_session.scalar(select(ColumnMapping))
+    assert saved.signature == header_signature(table.header) and saved.header[0] == "Inv no"
 
 
 def test_learned_mapping_failing_totals_is_not_saved(db_session):
