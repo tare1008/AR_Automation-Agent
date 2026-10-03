@@ -22,7 +22,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from ar_pipeline.normalize.llm_client import LLMClient
-from ar_pipeline.normalize.prompt import SYSTEM_PROMPT, build_user_message
+from ar_pipeline.normalize.prompt import build_user_message, system_prompt_for
 from ar_pipeline.normalize.validators import validate_payload
 from ar_pipeline.schema.canonical import (
     Deduction,
@@ -113,18 +113,9 @@ class NormalizedPayment:
     raw_llm_response: dict
 
 
-def normalize_email(
-    *,
-    email_id: str,
-    sender_address: str,
-    subject: str,
-    raw_extractions: list[dict],
-    llm_client: LLMClient,
-) -> tuple[NormalizerOutput, list[NormalizedPayment]]:
-    user = build_user_message(sender_address, subject, raw_extractions)
-    out = llm_client.parse(system=SYSTEM_PROMPT, user=user, output_model=NormalizerOutput)
+def build_payments(email_id: str, out: NormalizerOutput) -> list[NormalizedPayment]:
+    """One validated ``NormalizedPayment`` per draft that survives schema construction."""
     raw = out.model_dump(mode="json")
-
     results: list[NormalizedPayment] = []
     skipped: list[str] = []
     next_index = 0
@@ -193,4 +184,20 @@ def normalize_email(
         else:
             out.notes = (out.notes + " | " + "; ".join(skipped)).strip(" |")
 
-    return out, results
+    return results
+
+
+def normalize_email(
+    *,
+    email_id: str,
+    sender_address: str,
+    subject: str,
+    raw_extractions: list[dict],
+    llm_client: LLMClient,
+    client_names: list[str] | None = None,
+) -> tuple[NormalizerOutput, list[NormalizedPayment]]:
+    user = build_user_message(sender_address, subject, raw_extractions)
+    out = llm_client.parse(
+        system=system_prompt_for(client_names or []), user=user, output_model=NormalizerOutput
+    )
+    return out, build_payments(email_id, out)

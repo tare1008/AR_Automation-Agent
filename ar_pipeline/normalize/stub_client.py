@@ -15,6 +15,11 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
+from ar_pipeline.config import get_settings
+from ar_pipeline.ledger.matching import payer_slug, payers_differ
+from ar_pipeline.tables.mapping import keyword_mapping, mapping_output
+from ar_pipeline.tables.models import HeaderOutput, MappingOutput
+
 T = TypeVar("T", bound=BaseModel)
 
 _NOTE = (
@@ -166,13 +171,22 @@ def _invoice_number(text: str) -> str:
     return ""
 
 
+def _is_client(name: str, clients: list[str]) -> bool:
+    return bool(payer_slug(name)) and any(
+        payer_slug(c) and not payers_differ(name, c) for c in clients
+    )
+
+
 def _payer_name(text: str) -> str:
+    clients = get_settings().client_name_list()
     m = _PAYER_LABEL_RE.search(text)
-    if m:
+    if m and not _is_client(m.group(1).strip(), clients):
         return m.group(1).strip()
-    for line in reversed(text.strip().splitlines()):
-        candidate = line.strip()
-        if _looks_like_company_name(candidate):
+    lines = [ln.strip() for ln in text.strip().splitlines()]
+    # a labeled name that is our own company: the payer is the letterhead (top)
+    ordered = lines if m else list(reversed(lines))
+    for candidate in ordered:
+        if _looks_like_company_name(candidate) and not _is_client(candidate, clients):
             return candidate
     return _PAYER_UNKNOWN
 
@@ -244,6 +258,23 @@ class StubLLMClient:
     parses ``user`` (the rendered raw extractions)."""
 
     def parse(self, *, system: str, user: str, output_model: type[T]) -> T:
+        if output_model is MappingOutput:
+            header = re.findall(r"^(\d+) = (.*)$", user, re.M)
+            cells = [cell for _, cell in header]
+            return output_model.model_validate(mapping_output(keyword_mapping(cells)).model_dump())
+        if output_model is HeaderOutput:
+            draft = _draft(user)
+            return output_model.model_validate(
+                {
+                    "is_remittance": _is_remittance(user),
+                    "notes": _NOTE,
+                    "payer_name": draft["payer_name"],
+                    "payment_reference": draft["payment_reference"],
+                    "payment_reference_type": draft["payment_reference_type"],
+                    "currency": draft["currency"],
+                    "confidence": draft["confidence"],
+                }
+            )
         if _is_remittance(user):
             notes = _NOTE
             refs = _distinct_references(user)

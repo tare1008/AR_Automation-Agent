@@ -231,3 +231,29 @@ def test_reminder_language_with_a_bank_reference_still_counts_as_remitted():
     )
     assert out.is_remittance is True
     assert len(out.payments) == 1
+
+
+def test_stub_maps_columns_and_reads_header(monkeypatch):
+    from ar_pipeline.config import get_settings
+    from ar_pipeline.extract.pdf import extract_pdf
+    from ar_pipeline.normalize.prompt import build_header_message, build_mapping_message
+    from ar_pipeline.normalize.stub_client import StubLLMClient
+    from ar_pipeline.tables.mapping import find_line_table, validate_mapping
+    from ar_pipeline.tables.models import HeaderOutput, MappingOutput
+    from tests.tables.advice_pdf import build_advice_pdf
+
+    monkeypatch.setenv("CLIENT_NAMES", "Acme Metals")
+    get_settings.cache_clear()
+    raws = [extract_pdf(build_advice_pdf()).to_payload()]
+    table = find_line_table(raws)
+    stub = StubLLMClient()
+    mapping = stub.parse(system="", user=build_mapping_message(table), output_model=MappingOutput)
+    assert validate_mapping(mapping, table.header)["amount_paid"] == 6
+    header = stub.parse(
+        system="",
+        user=build_header_message("a@b.c", "s", raws, table),
+        output_model=HeaderOutput,
+    )
+    assert header.is_remittance
+    assert header.payer_name == "CONTINENTAL BUS BODY BUILDERS LIMITED"
+    get_settings.cache_clear()
