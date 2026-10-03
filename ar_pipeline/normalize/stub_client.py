@@ -177,6 +177,9 @@ def _is_client(name: str, clients: list[str]) -> bool:
     )
 
 
+_MESSAGE_HEADER_RE = re.compile(r"(?:from|subject)\s*:", re.I)
+
+
 def _payer_name(text: str) -> str:
     clients = get_settings().client_name_list()
     m = _PAYER_LABEL_RE.search(text)
@@ -186,6 +189,8 @@ def _payer_name(text: str) -> str:
     # a labeled name that is our own company: the payer is the letterhead (top)
     ordered = lines if m else list(reversed(lines))
     for candidate in ordered:
+        if _MESSAGE_HEADER_RE.match(candidate):
+            continue  # the "From:" / "Subject:" lines the message is rendered with
         if _looks_like_company_name(candidate) and not _is_client(candidate, clients):
             return candidate
     return _PAYER_UNKNOWN

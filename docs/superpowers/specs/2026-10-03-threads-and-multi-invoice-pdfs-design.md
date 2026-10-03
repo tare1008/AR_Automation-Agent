@@ -312,3 +312,35 @@ where they differ.
    the payment it duplicates is already recorded, so re-reading that message
    on every later forward would only spend AI calls. It still never counts
    for payment-key uniqueness.
+
+## Planning-time corrections (Stage 2, 2026-10-04)
+
+Found while planning against the code; these supersede spec §4 where they differ.
+
+1. **Saved mappings are keyed by the table's header layout, in a new `column_mapping` table, not per payer in `vendor.column_hints`.** The payer is only known after the header is read, so a per-payer lookup cannot run first; the header signature (cells lower-cased, punctuation removed) identifies the advice format, and the totals check catches a mapping reused on the wrong document. The payer slug is stored for display only.
+2. **The header is always read by one small AI call** (the table cut to its header, 3 rows and the Total row). Rows are never re-typed by the AI, which was the cost and output-cap problem; reading the header "by pattern" was dropped as fragile.
+3. **Adjustment rows are recognised in code, not by an AI-returned rule:** a row is an adjustment when its net is negative, or its gross is empty/zero and its adjustment column has a value. Its type is `discount` when its number contains "DISC", else `debit_note`.
+4. **"One digit off" means one inserted or missing digit only.** A substituted digit is usually the neighbouring invoice (…4515 vs …4516) and would be a wrong suggestion.
+5. **The column-total check runs on the table path only** (it needs the mapping); every single-payment read also gets the amount-in-words check. A multi-payment message gets no totals check.
+6. **On the table path `total_paid_amount` is the sum of the lines** and header deductions are empty; the totals check compares it with the document.
+7. **The table path needs one clear table:** exactly one table in the message's sources with ≥ 6 data rows, ≥ 3 columns and ≥ 2 mostly-numeric columns. Smaller tables stay on the full-AI path, which handles them well.
+8. **Adjustment matching looks at this payment's invoice lines first, then the ledger.** An adjustment is posted to the ledger only when its target invoice exists there (after this payment's own invoice lines are posted); an adjustment is never used to create an invoice.
+9. **CSV refresh keeps sticky flags.** `refresh_pending_flags` used to drop history, truncation and duplicate flags (a Stage 1 gap); all flag recomputation now goes through `normalize/recheck.py`.
+10. **Totals status is derived, not stored:** `extraction.read_info` stores the document's printed totals; match / mismatch is recomputed whenever the payment is shown or rechecked, so a reviewer's correction clears the mismatch.
+
+## Execution-time rulings (Stage 2)
+
+Behaviour decisions made while building.
+
+- An adjustment reduces the invoice it names even if this payment already settles it (the line is then flagged "already fully paid").
+- A page-top continuation row is glued only onto text cells, never amounts or totals.
+- Total-ish rows (including sub-totals) are never lines; the last non-sub-total total is the Total row, and rows after it are dropped.
+- An unlabelled last row with a blank number that equals the column sums is the Total row.
+- The header is the last name row above the first row of figures (within the first 5 rows); banner rows above it are dropped.
+- Padding rows (blank number, zero amounts) are skipped.
+- A bare "Amount" column is `amount_paid` only when no net/paid column exists.
+- A row with a negative gross is an adjustment.
+- Amounts written "Rs. 1,000/-" are read.
+- An adjustment against an invoice in another currency is flagged and not applied.
+- An adjustment larger than the outstanding balance is flagged.
+- A table-path header message over the prompt cap gets the truncation flag.

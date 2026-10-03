@@ -100,6 +100,21 @@ Rolling it out on an existing database: stop the scheduler / app first, then
 flight (`new`, `classified`, `error`) are left alone by `threads-backfill`; they get
 their message rows when the pipeline processes or retries them.
 
+## Multi-invoice payment advices
+
+An advice PDF with one clear line table (at least 6 rows, 3 columns, 2 numeric
+columns) is read through that table. The AI maps the columns once per layout and
+the mapping is saved, so later advices with the same layout skip that call; every
+row is then copied in code, never re-typed by the AI, which reads only the header
+(payer, reference, currency). Review shows a totals badge comparing the lines
+with the totals printed on the document; a mismatch is flagged until a correction
+makes them agree. Credit/discount/debit rows are kept as adjustment lines against
+the invoice they name; when the invoice is only a near match, the line offers a
+"Use ..." button to apply the suggestion. A payer that looks like the receiving
+company (set `CLIENT_NAMES`) is flagged. `uv run python scripts/dev_db.py migrate`
+applies migration 0006; no backfill is needed, as old payloads read as
+`schema_version` 2 with `kind: invoice`.
+
 ## Local demo (no Microsoft 365, no deployment)
 
 `./scripts/setup` leaves `.env` ready for an **offline** demo — no API key:
