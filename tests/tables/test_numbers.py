@@ -23,6 +23,11 @@ from ar_pipeline.tables.numbers import parse_amount, parse_date
         (None, None),
         ("27.11.2025", None),
         ("2510004583DISCO", None),
+        ("Rs. 1,00,000/-", Decimal("100000")),
+        ("1,000/-", Decimal("1000")),
+        ("1,,000", None),
+        (",100", None),
+        ("100,", None),
     ],
 )
 def test_parse_amount(raw, expected):

@@ -34,10 +34,17 @@ def parse_amount(raw: str | None) -> Decimal | None:
     negative = False
     if s.startswith("(") and s.endswith(")"):
         negative, s = True, s[1:-1]
+    if s.endswith("/-"):
+        s = s[:-2]
+    elif s.endswith("/"):
+        s = s[:-1]
     if s.endswith("-"):
         negative, s = True, s[:-1]
     if s.startswith("-"):
         negative, s = True, s[1:]
+    # Reject empty comma groups
+    if s.startswith(",") or s.endswith(",") or ",," in s:
+        return None
     s = s.replace(",", "")
     if not _NUMBER_RE.fullmatch(s):
         return None

@@ -63,6 +63,9 @@ def _runs(text: str) -> list[list[str]]:
     for t in tokens:
         if t in _VOCAB:
             current.append(t)
+            if t == "only":
+                runs.append(current)
+                current = []
         elif current:
             runs.append(current)
             current = []

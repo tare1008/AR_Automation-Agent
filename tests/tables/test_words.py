@@ -21,6 +21,10 @@ from ar_pipeline.tables.words import amount_in_words
         ("Rupees Nine Hundred Ninety Nine only", Decimal("999.00")),
         ("one invoice and two credit notes", None),
         ("no amount here at all", None),
+        (
+            "Rupees Three Lakh Fifty Thousand Only Rupees Five Hundred Only",
+            Decimal("350000.00"),
+        ),
     ],
 )
 def test_amount_in_words(text, expected):
