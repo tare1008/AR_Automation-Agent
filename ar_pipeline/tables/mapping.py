@@ -16,7 +16,8 @@ from ar_pipeline.tables.numbers import parse_amount, parse_date
 
 MIN_DATA_ROWS = 6
 _REQUIRED = {"invoice_number", "amount_paid"}
-_TOTAL_RE = re.compile(r"^\s*(?:grand\s*)?total\b|^\s*net\s*payable", re.I)
+_TOTAL_RE = re.compile(r"^\s*(?:sub\s*|grand\s*)?total\b|^\s*net\s*payable", re.I)
+_SUBTOTAL_RE = re.compile(r"^\s*sub\s*total\b", re.I)
 _ZERO = Decimal("0")
 
 ColumnMap = dict[str, int]
@@ -63,8 +64,16 @@ def find_line_table(raws: list[dict]) -> LineTable | None:
                 continue
             header, body = rows[0], rows[1:]
             total = None
-            if any(_TOTAL_RE.match(c) for c in body[-1] if c):
-                total, body = body[-1], body[:-1]
+            last = -1
+            for bi, r in enumerate(body):
+                if any(_TOTAL_RE.match(c) for c in r if c) and not any(
+                    _SUBTOTAL_RE.match(c) for c in r if c
+                ):
+                    last = bi
+            if last >= 0:
+                total = body[last]
+                body = body[:last]  # rows after the total are notes or amount in words
+            body = [r for r in body if not any(_TOTAL_RE.match(c) for c in r if c)]
             if len(body) < MIN_DATA_ROWS:
                 continue
             numeric = sum(1 for i in range(len(header)) if _numeric_share(body, i) >= 0.5)
@@ -74,6 +83,7 @@ def find_line_table(raws: list[dict]) -> LineTable | None:
     return found[0] if len(found) == 1 else None
 
 
+_PAID_NAMES = {"amountpaid", "paidamount", "paymentamount"}
 _RULES: list[tuple[str, Callable[[str], bool]]] = [
     ("tds", lambda c: "tds" in c),
     ("invoice_date", lambda c: "date" in c),
@@ -97,18 +107,20 @@ _RULES: list[tuple[str, Callable[[str], bool]]] = [
     ),
     (
         "invoice_amount",
-        lambda c: "gross" in c or c in {"invoiceamount", "billamount", "invoicevalue"},
+        lambda c: (
+            "gross" in c
+            or c
+            in {"invoiceamount", "billamount", "invoicevalue", "billamt", "invoiceamt", "invamt"}
+        ),
     ),
     (
         "adjustment",
         lambda c: c.startswith("adv") or any(w in c for w in ("debit", "adjust", "discount")),
     ),
+    ("other_deduction", lambda c: c in {"deduction", "deductions"}),
     (
         "amount_paid",
-        lambda c: (
-            c.startswith("net")
-            or c in {"amountpaid", "paidamount", "payment", "paymentamount", "amount"}
-        ),
+        lambda c: c.startswith("net") or c in _PAID_NAMES | {"payment"},
     ),
 ]
 
@@ -117,14 +129,23 @@ def keyword_mapping(header: list[str]) -> ColumnMap | None:
     """The offline mapper: each column gets the first matching role, each role
     its first column. None when invoice number or amount paid is missing."""
     cols: ColumnMap = {}
+    bare: int | None = None
+    has_net = False
     for i, cell in enumerate(header):
         c = _compact(cell)
         if not c:
+            continue
+        has_net = has_net or c.startswith("net") or c in _PAID_NAMES
+        if c == "amount":
+            bare = bare if bare is not None else i
             continue
         for role, rule in _RULES:
             if role not in cols and rule(c):
                 cols[role] = i
                 break
+    if bare is not None:
+        role = "invoice_amount" if has_net else "amount_paid"
+        cols.setdefault(role, bare)
     return cols if cols.keys() >= _REQUIRED else None
 
 
@@ -176,8 +197,14 @@ def apply_mapping(table: LineTable, cols: ColumnMap) -> MappedTable:
         if gross is None and paid is None and adj == 0:
             continue  # a heading or note row
         day = parse_date(_get(row, cols, "invoice_date"))
-        if (paid is not None and paid < 0) or ((gross is None or gross == 0) and adj > 0):
-            amount = adj if adj > 0 else abs(paid if paid is not None else gross or _ZERO)
+        negative = (paid is not None and paid < 0) or (gross is not None and gross < 0)
+        if negative or ((gross is None or gross == 0) and adj > 0):
+            if adj > 0:
+                amount = adj
+            elif gross is not None and gross != 0:
+                amount = abs(gross)
+            else:
+                amount = abs(paid or _ZERO)
             if amount == 0:
                 continue
             kind = "discount" if "DISC" in number.upper() else "debit_note"

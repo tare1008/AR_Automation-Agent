@@ -141,3 +141,50 @@ def test_two_thousand_rows():
     mapped = apply_mapping(table, keyword_mapping(header))
     assert len(mapped.lines) == 2000
     assert sum(li.amount_paid for li in mapped.lines) == Decimal("1998000.00")
+
+
+def _table(header, rows):
+    return find_line_table([{"text": "", "tables": [[header, *rows]]}])
+
+
+def test_total_row_followed_by_words_row_and_subtotals():
+    header = ["Bill No", "Gross Amount", "Net Payment"]
+    rows = [[f"B{i}", "10.00", "10.00"] for i in range(6)]
+    rows.insert(3, ["Sub Total", "30.00", "30.00"])
+    rows += [["Total", "60.00", "60.00"], ["Rupees Sixty only", "", ""]]
+    table = _table(header, rows)
+    assert table.total_row is not None and table.total_row[0] == "Total"
+    assert len(table.rows) == 6
+    mapped = apply_mapping(table, keyword_mapping(header))
+    assert len(mapped.lines) == 6
+    assert mapped.column_totals == {
+        "invoice_amount": Decimal("60.00"),
+        "amount_paid": Decimal("60.00"),
+    }
+
+
+def test_more_keyword_headers():
+    assert keyword_mapping(["Doc No", "Doc Date", "Bill Amt", "Deduction", "Paid Amount"]) == {
+        "invoice_number": 0,
+        "invoice_date": 1,
+        "invoice_amount": 2,
+        "other_deduction": 3,
+        "amount_paid": 4,
+    }
+    assert keyword_mapping(["Bill No", "Bill Date", "Amount", "TDS", "Net Amount"]) == {
+        "invoice_number": 0,
+        "invoice_date": 1,
+        "invoice_amount": 2,
+        "tds": 3,
+        "amount_paid": 4,
+    }
+
+
+def test_negative_gross_with_positive_net_is_adjustment():
+    header = ["Bill No", "Bill Date", "Gross Amount", "TDS", "Net Payment"]
+    rows = [["B1", "01.01.2026", "100.00", "0", "100.00"]] * 5 + [
+        ["CN1", "01.01.2026", "-500", "0", "500"]
+    ]
+    mapped = apply_mapping(_table(header, rows), keyword_mapping(header))
+    assert mapped.lines[-1].kind == "adjustment"
+    assert mapped.lines[-1].amount_paid == Decimal("-500")
