@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
 from ar_pipeline.extract.html_table import table_rows
-from ar_pipeline.threads.references import has_payment_signal
+from ar_pipeline.threads.references import _AMOUNT_RE, find_references, has_payment_signal
 
 _BLOCK_TAGS = {
     "p", "div", "tr", "li", "table", "blockquote", "h1", "h2", "h3", "h4", "h5",
@@ -27,28 +27,35 @@ _BLOCK_TAGS = {
 }  # fmt: skip
 _SKIP_TAGS = {"script", "style", "head", "title"}
 _LEAD = r"[ \t>*]*"
+_SEP = r"(?:[ \t]*\n)?"  # at most one blank line between header lines (one <p> per line)
 _OUTLOOK_RE = re.compile(
-    rf"(?mi)^{_LEAD}From:[ \t*]*(?P<sender>[^\n]+)\n"
+    rf"(?mi)^{_LEAD}From:[ \t*]*(?P<sender>[^\n]+)\n{_SEP}"
     rf"{_LEAD}(?:Sent|Date):[ \t*]*(?P<sent>[^\n]+)\n"
-    rf"(?:{_LEAD}(?:To|Cc|Bcc|Subject|Importance):[^\n]*(?:\n|$))+"
+    rf"(?P<run>(?:{_SEP}{_LEAD}(?:To|Cc|Bcc|Subject|Importance):[^\n]*(?:\n|$))+)"
 )
-# the sender group excludes "," and the date group is bounded, so a long line cannot
-# trigger quadratic backtracking
+_SUBJECT_RE = re.compile(r"(?mi)^[ \t>*]*Subject:")
+# the sender group excludes "," and "<" and every part is bounded, so a long line cannot
+# trigger quadratic backtracking. The date ends at a year, optionally followed by a time.
 _GMAIL_RE = re.compile(
-    r"(?mi)^[ \t>]*On (?P<sent>[^\n]{1,120}?),?[ \t]*(?P<sender>[^\n,<]{0,120}<[^>\n]{1,200}>)"
-    r"[ \t]*wrote:[ \t]*$\n?"
+    r"(?mi)^[ \t>]*On (?P<sent>[^\n]{1,120}?\d{4}"
+    r"(?:,?[ \t]+(?:at[ \t]+)?\d{1,2}:\d{2}(?:[ \t]?[AP]M)?)?),?[ \t]*"
+    r"(?P<sender>[^\n,<]{0,120}<[^>\n]{1,200}>)[ \t]*\n?[ \t>]*wrote:[ \t]*$\n?"
 )
 _FORWARD_RE = re.compile(
     r"(?mi)^[ \t>]*-{2,}[ \t]*Forwarded message[ \t]*-{2,}[ \t]*\n"
     r"(?P<hdrs>(?:[ \t>]*(?:From|Date|Sent|Subject|To|Cc):[^\n]*(?:\n|$))+)"
 )
 _HDR_FIELD_RE = re.compile(r"(?mi)^[ \t>]*(?P<name>From|Date|Sent):[ \t]*(?P<value>[^\n]+)")
-_CAUTION_RE = re.compile(r"(?is)caution:.{0,300}?\bsafe\b\.?")
+_CAUTION_RE = re.compile(
+    r"(?is)caution:\s*this (?:e-?mail|message) originated from outside.{0,250}?\bsafe\b\.?"
+)
+_AM_PM_RE = re.compile(r"(?i)\b[AP]\.?M\b")
 _WORD_RE = re.compile(r"[a-z0-9]+")
 _DATE_FORMATS = (
     "%d %B %Y %H:%M", "%d %B %Y %I:%M %p", "%d %b %Y %H:%M", "%d %b %Y %I:%M %p",
     "%A, %B %d, %Y %I:%M %p", "%A, %d %B %Y %H:%M", "%A, %d %B, %Y %I:%M %p",
-    "%a, %b %d, %Y at %I:%M %p", "%a, %b %d, %Y",
+    "%a, %b %d, %Y %I:%M %p", "%a, %d %b %Y %I:%M %p", "%a, %d %b %Y %H:%M",
+    "%a, %b %d, %Y %H:%M", "%a, %b %d, %Y",
 )  # fmt: skip
 _FINGERPRINT_WORDS = 60
 _MIN_FINGERPRINT_WORDS = 8
@@ -80,7 +87,12 @@ def fingerprint(body_text: str) -> str | None:
     words = _WORD_RE.findall(text)
     if len(words) < _MIN_FINGERPRINT_WORDS:
         return None
-    return hashlib.sha256(" ".join(words[:_FINGERPRINT_WORDS]).encode()).hexdigest()
+    refs = sorted(find_references(body_text or ""))
+    amounts = sorted(
+        {re.sub(r"[^\d.]", "", m.group()) for m in _AMOUNT_RE.finditer(body_text or "")}
+    )
+    material = " ".join(words[:_FINGERPRINT_WORDS]) + "|" + ",".join(refs) + "|" + ",".join(amounts)
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def _linearize_html(html: str) -> tuple[str, list[tuple[int, Tag]]]:
@@ -94,32 +106,35 @@ def _linearize_html(html: str) -> tuple[str, list[tuple[int, Tag]]]:
         out.append(s)
         pos += len(s)
 
-    def walk(node: Tag) -> None:
-        for child in node.children:
-            if isinstance(child, Comment):
-                continue
-            if isinstance(child, NavigableString):
-                s = re.sub(r"\s+", " ", str(child))
-                if s.strip():
-                    emit(s)
-                continue
-            if not isinstance(child, Tag) or child.name in _SKIP_TAGS:
-                continue
-            if child.name == "br":
-                emit("\n")  # a single newline: header lines stay on consecutive lines
-                continue
-            block = child.name in _BLOCK_TAGS
-            if block:
-                emit("\n")
-            if child.name == "table" and child.find("table") is None:
-                tables.append((pos, child))
-            if child.name in ("td", "th"):
-                emit(" ")
-            walk(child)
-            if block:
-                emit("\n")
+    stack: list[object] = list(reversed(list(soup.children)))
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str) and not isinstance(item, NavigableString):
+            emit(item)
+            continue
+        if isinstance(item, Comment):
+            continue
+        if isinstance(item, NavigableString):
+            s = re.sub(r"\s+", " ", str(item))
+            if s.strip():
+                emit(s)
+            continue
+        if not isinstance(item, Tag) or item.name in _SKIP_TAGS:
+            continue
+        if item.name == "br":
+            emit("\n")  # a single newline: header lines stay on consecutive lines
+            continue
+        block = item.name in _BLOCK_TAGS
+        if block:
+            emit("\n")
+        if item.name == "table" and item.find("table") is None:
+            tables.append((pos, item))
+        if item.name in ("td", "th"):
+            emit(" ")
+        if block:
+            stack.append("\n")
+        stack.extend(reversed(list(item.children)))
 
-    walk(soup)
     return "".join(out), tables
 
 
@@ -136,13 +151,19 @@ def _parse_sender(raw: str | None) -> str | None:
 def _parse_sent(raw: str | None) -> datetime | None:
     if not raw:
         return None
-    raw = raw.strip()
-    try:
-        dt = email.utils.parsedate_to_datetime(raw)
-    except (TypeError, ValueError, IndexError):
-        dt = None
+    raw = re.sub(r",(\s+\d{1,2}:\d{2})", r"\1", re.sub(r"(?i),?\s+at\s+", " ", raw.strip()))
+    raw = re.sub(r"\s+", " ", raw)
+    dt: datetime | None = None
+    has_ampm = bool(_AM_PM_RE.search(raw))
+    if not has_ampm:  # parsedate silently drops AM/PM, so it only sees 24-hour strings
+        try:
+            dt = email.utils.parsedate_to_datetime(raw)
+        except (TypeError, ValueError, IndexError):
+            dt = None
     if dt is None:
         for fmt in _DATE_FORMATS:
+            if has_ampm != ("%p" in fmt):
+                continue
             try:
                 dt = datetime.strptime(raw, fmt)
                 break
@@ -156,7 +177,8 @@ def _parse_sent(raw: str | None) -> datetime | None:
 def _boundaries(text: str) -> list[_Boundary]:
     found: list[_Boundary] = []
     for m in _OUTLOOK_RE.finditer(text):
-        found.append(_Boundary(m.start(), m.end(), m.group("sender"), m.group("sent")))
+        if _SUBJECT_RE.search(m.group("run")):
+            found.append(_Boundary(m.start(), m.end(), m.group("sender"), m.group("sent")))
     for m in _GMAIL_RE.finditer(text):
         found.append(_Boundary(m.start(), m.end(), m.group("sender"), m.group("sent")))
     for m in _FORWARD_RE.finditer(text):
