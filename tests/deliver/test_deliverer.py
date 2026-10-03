@@ -122,3 +122,25 @@ def test_raised_exception_still_records_attempt(db_session):
     assert d.attempts == 1
     assert d.last_attempt_at == _NOW
     assert d.last_error is not None and "boom" in d.last_error
+
+
+def test_legacy_canonical_is_sent_in_the_current_format(db_session):
+    # R9.5: a row stored before schema v2 goes out with schema_version "2" and line kinds
+    from tests.ledger.conftest import canonical_for
+
+    legacy = canonical_for()
+    assert "schema_version" not in legacy["envelope"]
+    _approved_delivery(db_session, canonical=legacy)
+    fake = FakeBackendClient()
+    run_deliveries(db_session, fake, now=_NOW)
+    ((sent, _key),) = fake.calls
+    assert sent["envelope"]["schema_version"] == "2"
+    assert sent["line_items"][0]["kind"] == "invoice"
+    assert sent["line_items"][0]["applies_to"] is None
+
+
+def test_unreadable_canonical_is_sent_as_stored(db_session):
+    _approved_delivery(db_session, canonical={"envelope": {"extraction_id": "x"}})
+    fake = FakeBackendClient()
+    run_deliveries(db_session, fake, now=_NOW)
+    assert fake.calls[0][0] == {"envelope": {"extraction_id": "x"}}

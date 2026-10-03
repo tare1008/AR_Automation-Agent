@@ -12,11 +12,13 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ar_pipeline.db.models import Delivery, Extraction
 from ar_pipeline.deliver.backend_client import DeliveryResult
+from ar_pipeline.schema.canonical import RemittancePayload
 
 _BACKOFF: list[timedelta] = [
     timedelta(minutes=1),
@@ -88,6 +90,15 @@ def run_deliveries(
     return DeliveryStats(delivered=delivered, failed=failed, retrying=retrying)
 
 
+def _outgoing(canonical: dict) -> dict:
+    """The payload in the current format (a row stored before schema v2 gains
+    ``schema_version`` and line ``kind``); the stored dict if it can't be read."""
+    try:
+        return RemittancePayload.model_validate(canonical).model_dump(mode="json")
+    except ValidationError:
+        return dict(canonical)
+
+
 def _deliver_one(session: Session, row: Delivery, backend_client: SendClient, now: datetime) -> str:
     row.attempts += 1
     row.last_attempt_at = now
@@ -98,7 +109,7 @@ def _deliver_one(session: Session, row: Delivery, backend_client: SendClient, no
         row.last_error = "extraction no longer approved"
         return "failed"
 
-    result = backend_client.send(dict(ext.canonical), str(ext.id))
+    result = backend_client.send(_outgoing(ext.canonical), str(ext.id))
 
     if result.outcome == "ok":
         row.status = "delivered"

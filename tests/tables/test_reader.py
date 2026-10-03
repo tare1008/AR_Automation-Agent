@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 
 from ar_pipeline.db.models import ColumnMapping
 from ar_pipeline.extract.pdf import extract_pdf
+from ar_pipeline.normalize.llm_client import LLMError, LLMRefused, LLMTruncated
 from ar_pipeline.normalize.stub_client import StubLLMClient
 from ar_pipeline.tables.mapping import find_line_table, header_signature, mapping_output
 from ar_pipeline.tables.models import HeaderOutput, MappingOutput
@@ -284,3 +286,91 @@ def test_normalize_one_flags_a_truncated_table_read(db_session):
     ext = db_session.scalar(select(Extraction).where(Extraction.email_id == email.id))
     assert ext.read_info["path"] == "table"
     assert TRUNCATED_FLAG in ext.validation_flags
+
+
+def _plain_table_raws() -> list[dict]:
+    rows = [["Invoice No", "Invoice Date", "Amount", "TDS", "Net"]]
+    rows += [[f"INV-10{i}", "01.09.2026", "1000.00", "10.00", "990.00"] for i in range(6)]
+    return [{"text": "Payment details below.", "tables": [rows]}]
+
+
+def test_read_without_document_totals_is_returned_but_not_learned(db_session):
+    # R9.6: nothing verified the mapping, so it is not saved
+    cols = {"invoice_number": 0, "invoice_date": 1, "invoice_amount": 2, "tds": 3}
+    cols |= {"amount_paid": 4}
+    llm = FakeLLMClient(responses=[mapping_output(cols), _header()])
+    read = read_by_table(
+        db_session,
+        email_id="e",
+        sender="s@x.com",
+        subject="advice",
+        raws=_plain_table_raws(),
+        llm_client=llm,
+        client_names=[],
+    )
+    assert read is not None and read.read_info["document_totals"] == {}
+    assert len(read.payments[0].payload.line_items) == 6
+    assert db_session.scalar(select(ColumnMapping)) is None
+
+
+def _validation_error() -> Exception:
+    from pydantic import ValidationError
+
+    try:
+        HeaderOutput.model_validate({"confidence": "not a number"})
+    except ValidationError as exc:
+        return exc
+    raise AssertionError("expected a ValidationError")
+
+
+@pytest.mark.parametrize(
+    "responses",
+    [
+        [LLMRefused("no")],
+        [_validation_error()],
+        [mapping_output(GOOD_COLS), LLMTruncated("cut")],
+        [mapping_output(GOOD_COLS), LLMError("boom")],
+        [mapping_output(GOOD_COLS), _validation_error()],
+    ],
+    ids=[
+        "mapping-refused",
+        "mapping-invalid",
+        "header-truncated",
+        "header-error",
+        "header-invalid",
+    ],
+)
+def test_llm_errors_in_the_table_read_fall_back(db_session, responses):
+    # R9.2
+    assert _read(db_session, FakeLLMClient(responses=responses)) is None
+
+
+def test_normalize_one_falls_back_to_the_full_read_when_mapping_is_refused(db_session):
+    from ar_pipeline.db.models import Extraction
+    from ar_pipeline.normalize.normalizer import NormalizerOutput, PaymentDraft
+    from ar_pipeline.normalize.service import normalize_one
+    from ar_pipeline.schema.canonical import LineItem
+
+    full = NormalizerOutput(
+        is_remittance=True,
+        payments=[
+            PaymentDraft(
+                payer_name="Continental Bus Body Builders",
+                total_paid_amount=Decimal("100.00"),
+                line_items=[
+                    LineItem(
+                        invoice_number="INV-1",
+                        invoice_amount=Decimal("100.00"),
+                        amount_paid=Decimal("100.00"),
+                    )
+                ],
+                confidence=0.9,
+            )
+        ],
+    )
+    email = _advice_email(db_session)
+    llm = FakeLLMClient(responses=[LLMRefused("refused"), full])
+    assert normalize_one(db_session, email, llm) == 1
+    ext = db_session.scalar(select(Extraction).where(Extraction.email_id == email.id))
+    assert ext is not None and ext.read_info["path"] == "ai"
+    assert ext.canonical["line_items"][0]["invoice_number"] == "INV-1"

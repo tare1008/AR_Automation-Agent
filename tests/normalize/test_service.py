@@ -122,9 +122,12 @@ def test_poison_llm_refusal_isolated_from_healthy_sibling(db_session, store):
         db_session.refresh(email)
         assert email.status == "extracted"
 
-    # first email to be normalized refuses; its sibling gets a good payload.
+    # first email to be normalized refuses; its sibling gets a good payload. The
+    # first one (06, an Excel line table) is refused twice: a refused table read
+    # falls back to the full-AI read (R9), which is refused too.
     client = FakeLLMClient(
         responses=[
+            LLMRefused("nope"),
             LLMRefused("nope"),
             NormalizerOutput(is_remittance=True, payments=[_reconciling_draft()]),
         ]

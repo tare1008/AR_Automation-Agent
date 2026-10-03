@@ -8,10 +8,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from ar_pipeline.ledger.matching import payer_slug
-from ar_pipeline.normalize.llm_client import LLMClient
+from ar_pipeline.normalize.llm_client import LLMClient, LLMError
 from ar_pipeline.normalize.normalizer import (
     NormalizedPayment,
     NormalizerOutput,
@@ -49,9 +50,14 @@ class TableRead:
 
 
 def _learn(table: LineTable, llm_client: LLMClient) -> ColumnMap | None:
-    out = llm_client.parse(
-        system=MAPPING_SYSTEM_PROMPT, user=build_mapping_message(table), output_model=MappingOutput
-    )
+    try:
+        out = llm_client.parse(
+            system=MAPPING_SYSTEM_PROMPT,
+            user=build_mapping_message(table),
+            output_model=MappingOutput,
+        )
+    except (LLMError, ValidationError):
+        return None  # the full-AI read runs instead (R9)
     return validate_mapping(out, table.header)
 
 
@@ -104,11 +110,14 @@ def read_by_table(
                 continue
             return None
         if header is None:
-            header = llm_client.parse(
-                system=system_prompt_for(client_names, HEADER_SYSTEM_PROMPT),
-                user=build_header_message(sender, subject, raws, table),
-                output_model=HeaderOutput,
-            )
+            try:
+                header = llm_client.parse(
+                    system=system_prompt_for(client_names, HEADER_SYSTEM_PROMPT),
+                    user=build_header_message(sender, subject, raws, table),
+                    output_model=HeaderOutput,
+                )
+            except (LLMError, ValidationError):
+                return None  # the full-AI read runs instead (R9)
             if not header.is_remittance:
                 return None
         out = _output(header, mapped)
@@ -121,7 +130,8 @@ def read_by_table(
                 discard_mapping(session, signature)
                 continue
             return None
-        if origin == "learned":
+        if origin == "learned" and document:
+            # only a mapping the document's own totals verified is kept (R9)
             save_mapping(
                 session,
                 signature,
@@ -129,7 +139,7 @@ def read_by_table(
                 cols,
                 payer_slug(payments[0].payload.header.payer_name),
             )
-        else:
+        elif origin == "saved":
             touch_mapping(session, signature)
         info: dict = {"path": "table", "mapping": origin, "document_totals": document}
         if header_message_truncated(sender, subject, raws, table):
