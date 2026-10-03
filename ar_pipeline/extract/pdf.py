@@ -6,11 +6,13 @@ belongs to."""
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 
 import pdfplumber
 
 from ar_pipeline.extract.base import ExtractedContent
+from ar_pipeline.tables.numbers import parse_amount
 
 Table = list[list[str]]
 
@@ -31,12 +33,21 @@ def _cell(raw: object) -> str:
     return out
 
 
-def _is_continuation(row: list[str]) -> bool:
-    filled = [c for c in row if c]
-    return (
-        bool(filled)
-        and len(filled) * 3 <= len(row)
-        and all(" " not in c and len(c) <= 12 for c in filled)
+_TOTAL_LABEL = re.compile(r"(?i)^(grand\s*)?total$|^net\s*payable$")
+
+
+def _is_continuation(row: list[str], prev: list[str]) -> bool:
+    filled = [(i, c) for i, c in enumerate(row) if c]
+    if not filled or len(filled) * 3 > len(row):
+        return False
+    return all(
+        " " not in c
+        and len(c) <= 12
+        and i < len(prev)
+        and prev[i]
+        and parse_amount(prev[i]) is None
+        and not _TOTAL_LABEL.match(c)
+        for i, c in filled
     )
 
 
@@ -45,15 +56,16 @@ def _merge(tables: list[Table]) -> list[Table]:
     for table in tables:
         if merged and table and merged[-1] and table[0] == merged[-1][0]:
             rest = table[1:]
-            if rest and _is_continuation(rest[0]) and len(merged[-1]) > 1:
-                prev = merged[-1][-1]
+            if rest and len(merged[-1]) > 1 and _is_continuation(rest[0], merged[-1][-1]):
+                prev = list(merged[-1][-1])
+                merged[-1][-1] = prev
                 for i, cell in enumerate(rest[0]):
                     if cell and i < len(prev):
                         prev[i] = _glue(prev[i], cell)
                 rest = rest[1:]
             merged[-1].extend(rest)
         else:
-            merged.append(table)
+            merged.append([list(r) for r in table])
     return merged
 
 

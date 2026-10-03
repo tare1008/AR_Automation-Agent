@@ -56,3 +56,38 @@ def test_advice_table_is_cleaned_and_merged_across_pages() -> None:
     assert "Document No : 1500009001" in raw.text
     assert "RTGS/NEFT Reference : RTGS PAYMENT" in raw.text
     assert "1,248,750.00" not in raw.text
+
+
+def test_merge_does_not_glue_sparse_numeric_tail_row() -> None:
+    from ar_pipeline.extract.pdf import _merge
+
+    head = ["Bill", "Date", "A", "B", "C", "D", "Net"]
+    p1 = [head, ["INV8", "01.01.2026", "x", "1", "2", "3", "750.00"]]
+    p2 = [head, ["INV9", "", "", "", "", "", "500.00"], ["INV10", "d", "x", "1", "2", "3", "5.00"]]
+    out = _merge([p1, p2])
+    assert len(out) == 1
+    assert out[0][1][6] == "750.00"
+    assert out[0][2][0] == "INV9"
+    assert len(out[0]) == 4
+
+
+def test_merge_does_not_glue_total_row() -> None:
+    from ar_pipeline.extract.pdf import _merge
+
+    head = ["A", "B", "C", "D"]
+    out = _merge([[head, ["a", "b", "c", "d"]], [head, ["Total", "", "", ""]]])
+    assert out[0][1][0] == "a"
+    assert out[0][2][0] == "Total"
+
+
+def test_merge_glues_text_continuation_and_plain_split() -> None:
+    from ar_pipeline.extract.pdf import _merge
+
+    head = ["A", "B", "C", "D"]
+    p1 = [head, ["X1DIS", "b", "c", "d"]]
+    out = _merge([p1, [head, ["CO", "", "", ""], ["Y", "b", "c", "d"]]])
+    assert out[0][1][0] == "X1DISCO"
+    assert len(out[0]) == 3
+    assert p1[1][0] == "X1DIS"  # input not mutated
+    out2 = _merge([[head, ["a", "b", "c", "d"]], [head, ["e", "f", "g", "h"]]])
+    assert len(out2[0]) == 3
