@@ -6,16 +6,24 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ar_pipeline.db.models import Email, EmailMessage, Extraction, ExtractionSource
+from ar_pipeline.threads.dedupe import FLAG_POSSIBLE_DUPLICATE
 from ar_pipeline.threads.memory import KEY_LIVE
 from ar_pipeline.threads.references import payment_key_for
 
+# in-flight emails get real messages when the pipeline processes them (R24); an
+# errored email is left for retry, which re-runs classification from scratch
+_IN_FLIGHT = ("new", "classified", "error")
+
 
 def backfill(session: Session) -> tuple[int, int, int]:
-    """Returns (messages created, keys assigned, conflicts flagged). Safe to re-run."""
+    """Returns (messages created, keys assigned, conflicts flagged). Safe to re-run.
+
+    Stop the scheduler / app first: emails in new, classified or error are skipped.
+    """
     created = keyed = conflicts = 0
     have = set(session.scalars(select(EmailMessage.email_id).distinct()))
     for email in session.scalars(select(Email).order_by(Email.received_at.asc())).all():
-        if email.id in have:
+        if email.id in have or email.status in _IN_FLIGHT:
             continue
         msg = EmailMessage(
             email_id=email.id,
@@ -73,7 +81,7 @@ def backfill(session: Session) -> tuple[int, int, int]:
         if clash is not None:
             row.duplicate_of_id = clash
             row.validation_flags = list(row.validation_flags or []) + [
-                f"header: possible duplicate of payment {clash} (same reference)"
+                f"{FLAG_POSSIBLE_DUPLICATE} of payment {clash} (same reference)"
             ]
             conflicts += 1
         else:

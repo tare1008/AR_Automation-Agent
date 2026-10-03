@@ -111,10 +111,10 @@ def post_extraction(session: Session, extraction: Extraction) -> int:
 
 
 def backfill(session: Session) -> tuple[int, int]:
-    """Post every already-approved extraction. Safe to re-run."""
+    """Post every approved or already-recorded extraction. Safe to re-run."""
     approved = session.scalars(
         select(Extraction)
-        .where(Extraction.status == "approved")
+        .where(Extraction.status.in_(("approved", "already_recorded")))
         .order_by(Extraction.reviewed_at.asc().nulls_last(), Extraction.id.asc())
     )
     extractions = rows = 0

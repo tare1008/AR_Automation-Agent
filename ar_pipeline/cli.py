@@ -9,8 +9,8 @@ Subcommands:
   (or N times), synchronously — step a demo instead of waiting on the
   in-process scheduler.
 * ``status`` — print a summary of emails, extractions and deliveries by state.
-* ``ledger-backfill`` — post every already-approved payment into the invoice
-  ledger (safe to re-run).
+* ``ledger-backfill`` — post every approved or already-recorded payment into the
+  invoice ledger (safe to re-run).
 * ``threads-backfill`` — give rows created before threads their message rows and
   payment keys (run once after migration 0005; safe to re-run).
 
@@ -203,7 +203,9 @@ def build_parser() -> argparse.ArgumentParser:
         "gmail-login",
         help="one-time OAuth sign-in for MAILBOX_PROVIDER=gmail",
     )
-    sub.add_parser("ledger-backfill", help="post already-approved payments into the invoice ledger")
+    sub.add_parser(
+        "ledger-backfill", help="post approved / already-recorded payments into the invoice ledger"
+    )
     sub.add_parser(
         "threads-backfill",
         help="assign payment keys and thread messages to rows created before threads",

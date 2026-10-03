@@ -61,7 +61,7 @@ protocol with Entra ID OIDC — no route changes.
 | `ingest-eml FILE [FILE ...]` | Import settlement emails from `.eml` files as `status="new"` — the offline equivalent of a mailbox poll. Deduplicates on `Message-ID`; never touches the Graph delta cursor. |
 | `tick [--repeat N]` | Run the pipeline-advance and delivery jobs once (or N times), synchronously — step a demo instead of waiting on the 60 s background scheduler. |
 | `status` | Print emails / extractions / deliveries grouped by state. |
-| `ledger-backfill` | Post already-approved payments into the invoice ledger, then re-check pending items' flags. Safe to re-run. |
+| `ledger-backfill` | Post approved (and already-recorded) payments into the invoice ledger, then re-check pending items' flags. Safe to re-run. |
 | `threads-backfill` | Give rows created before email threads their message rows and payment keys; flags clashes. Run once after the migration; safe to re-run. |
 
 ## Invoice ledger
@@ -94,8 +94,11 @@ are marked historical and never auto-sent; if the payment is already in your boo
 use **Already recorded** in review. Set `CLIENT_DOMAINS` / `CLIENT_NAMES` (see
 `.env.example`) so internal forwards and payer vs beneficiary are told apart.
 
-Rolling it out on an existing database: `uv run python scripts/dev_db.py migrate`
-→ `uv run ar-pipeline threads-backfill` → `uv run ar-pipeline ledger-backfill`.
+Rolling it out on an existing database: stop the scheduler / app first, then
+`uv run python scripts/dev_db.py migrate` → `uv run ar-pipeline threads-backfill`
+→ `uv run ar-pipeline ledger-backfill`, then start the app again. Emails still in
+flight (`new`, `classified`, `error`) are left alone by `threads-backfill`; they get
+their message rows when the pipeline processes or retries them.
 
 ## Local demo (no Microsoft 365, no deployment)
 

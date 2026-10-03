@@ -153,3 +153,54 @@ def test_edit_keeps_reference_flag_when_key_untouched_and_approve_not_blocked(
     client.post(f"/review/{ext.id}/edit", data=form)
     db_session.expire_all()
     assert db_session.get(Extraction, ext.id).status == "approved"
+
+
+def test_already_recorded_refuses_a_row_linked_to_another_payment(db_session, seed_pending):
+    import pytest
+
+    from ar_pipeline.review.auth import User
+    from ar_pipeline.review.service import ReviewError, mark_already_recorded
+
+    _e1, first = seed_pending()
+    first.status = "approved"
+    ext = _historical(db_session, seed_pending)
+    ext.duplicate_of_id = first.id
+    db_session.flush()
+    with pytest.raises(ReviewError, match="possible duplicate"):
+        mark_already_recorded(db_session, [ext.id], User(name="Asha"))
+    db_session.refresh(ext)
+    assert ext.status == "pending_review"
+    assert not db_session.scalars(
+        select(InvoicePayment).where(InvoicePayment.extraction_id == ext.id)
+    ).all()
+
+
+def test_detail_already_recorded_on_a_linked_row_flashes_the_refusal(
+    client, db_session, seed_pending
+):
+    _e1, first = seed_pending()
+    first.status = "approved"
+    ext = _historical(db_session, seed_pending)
+    ext.duplicate_of_id = first.id
+    db_session.flush()
+    r = client.post(f"/review/{ext.id}/already-recorded")
+    assert r.status_code == 303 and "possible duplicate" in _loc(r)
+    db_session.expire_all()
+    assert db_session.get(Extraction, ext.id).status == "pending_review"
+
+
+def test_bulk_already_recorded_skips_linked_rows(client, db_session, seed_pending):
+    _e1, first = seed_pending()
+    first.status = "approved"
+    linked = _historical(db_session, seed_pending)
+    linked.duplicate_of_id = first.id
+    plain = _historical(db_session, seed_pending)
+    db_session.flush()
+    r = client.post(
+        "/review/bulk-already-recorded",
+        data={"extraction_id": [str(linked.id), str(plain.id)]},
+    )
+    assert r.status_code == 303 and "1 marked already recorded" in _loc(r)
+    db_session.expire_all()
+    assert db_session.get(Extraction, linked.id).status == "pending_review"
+    assert db_session.get(Extraction, plain.id).status == "already_recorded"

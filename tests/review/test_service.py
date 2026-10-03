@@ -224,3 +224,26 @@ def test_resend_delivery_rejects_non_failed(db_session, seed_pending):
     db_session.flush()
     with pytest.raises(ReviewError):
         resend_delivery(db_session, d.id)
+
+
+def test_save_edits_conflict_check_runs_under_the_key_lock(db_session, seed_pending):
+    from sqlalchemy import text
+
+    _e1, first = seed_pending()
+    first.payment_key, first.payment_key_strength, first.status = "utr:UTR2", "strong", "approved"
+    _e2, second = seed_pending()
+    db_session.flush()
+    form = {
+        "header": dict(second.canonical["header"]),
+        "line_items": second.canonical["line_items"],
+    }
+    form["header"]["payment_reference"] = "UTR-2"
+    with pytest.raises(ReviewError, match="already belongs to payment"):
+        save_edits(db_session, second.id, U, form, approve=False)
+    held = db_session.scalar(
+        text(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' "
+            "AND pid = pg_backend_pid() AND objid = hashtext('utr:UTR2')::oid"
+        )
+    )
+    assert held == 1

@@ -91,3 +91,11 @@ def test_line_whose_number_normalizes_to_empty_is_skipped(db_session, make_extra
     assert post_extraction(db_session, ext) == 0
     assert _payments(db_session) == []
     assert db_session.scalars(select(Invoice)).all() == []
+
+
+def test_backfill_posts_already_recorded_too(db_session, make_invoice, make_extraction):
+    make_invoice("INV-1", "100")
+    make_extraction(status="already_recorded", amount_paid="25", invoice_amount="100")
+    make_extraction(status="rejected", amount_paid="25", invoice_amount="100")
+    assert backfill(db_session) == (1, 1)
+    assert backfill(db_session) == (0, 0)

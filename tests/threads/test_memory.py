@@ -90,3 +90,15 @@ def test_all_references_recorded(db_session):
     assert all_references_recorded(db_session, {"REF11111111"})
     assert not all_references_recorded(db_session, {"REF11111111", "REF22222222"})
     assert not all_references_recorded(db_session, set())
+
+
+def test_superseded_rows_do_not_count_toward_recorded(db_session):
+    e = _email(db_session, "m-sup")
+    only_superseded = _msg(db_session, e)
+    _ext(db_session, e, only_superseded, "superseded")
+    assert not message_is_recorded(db_session, only_superseded.id)
+    e2 = _email(db_session, "m-sup2")
+    mixed = _msg(db_session, e2)
+    _ext(db_session, e2, mixed, "superseded")
+    _ext(db_session, e2, mixed, "approved")
+    assert message_is_recorded(db_session, mixed.id)

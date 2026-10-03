@@ -32,7 +32,12 @@ from ar_pipeline.pipeline.routing import approve_and_queue, settle_email
 from ar_pipeline.review.auth import User
 from ar_pipeline.review.forms import FieldEdit, canonical_diff
 from ar_pipeline.schema.canonical import RemittancePayload
-from ar_pipeline.threads.dedupe import assign_payment_key
+from ar_pipeline.threads.dedupe import (
+    FLAG_HISTORICAL,
+    KEY_FLAG_PREFIXES,
+    assign_payment_key,
+    lock_payment_key,
+)
 from ar_pipeline.threads.memory import KEY_LIVE
 from ar_pipeline.threads.references import payment_key_for
 
@@ -429,9 +434,15 @@ def bulk_reject_not_remittance(
     return rejected
 
 
-def mark_already_recorded(session: Session, extraction_ids: list[uuid.UUID], user: User) -> int:
+def mark_already_recorded(
+    session: Session, extraction_ids: list[uuid.UUID], user: User, *, skip_linked: bool = False
+) -> int:
     """Historical payments the client already has in their books: post them to the
-    invoice ledger (balances stay true) but never deliver them (no double-posting)."""
+    invoice ledger (balances stay true) but never deliver them (no double-posting).
+
+    A row linked to another payment (``duplicate_of_id``) would post the same money
+    twice, so it is refused with ``ReviewError`` — or skipped when ``skip_linked``
+    (the bulk path) (R25)."""
     from ar_pipeline.ledger.posting import post_extraction
 
     done = 0
@@ -445,6 +456,13 @@ def mark_already_recorded(session: Session, extraction_ids: list[uuid.UUID], use
             or ext.historical_reason is None
         ):
             continue
+        if ext.duplicate_of_id is not None:
+            if skip_linked:
+                continue
+            raise ReviewError(
+                f"this may be a possible duplicate of payment {ext.duplicate_of_id} — "
+                "reject it, or correct its reference, instead of marking it already recorded"
+            )
         ext.status = "already_recorded"
         ext.reviewed_by = user.name
         ext.reviewed_at = func.now()
@@ -627,6 +645,7 @@ def save_edits(
         # leaves the row exactly as it was
         found = payment_key_for(normalised)
         if found is not None and found[1] == "strong":
+            lock_payment_key(session, found[0])  # same lock assign_payment_key takes
             other = session.scalar(
                 select(Extraction)
                 .where(
@@ -651,14 +670,12 @@ def save_edits(
         )
     shown = list(ext.validation_flags or [])
     ext.canonical = normalised
-    always = ("header: historical —",)
-    key_families = ("header: reference ", "header: possible duplicate", "header: rejected before")
     kept = [
         f
         for f in shown
         if f == TRUNCATED_FLAG
-        or f.startswith(always)
-        or (not key_changed and f.startswith(key_families))
+        or f.startswith(FLAG_HISTORICAL)
+        or (not key_changed and f.startswith(KEY_FLAG_PREFIXES))
     ]
     recomputed = validate_payload(payload) + check_against_ledger(session, payload)
     ext.validation_flags = kept + [f for f in recomputed if f not in kept]
@@ -707,30 +724,27 @@ def use_invoice(
 
 
 def reprocess_email(session: Session, email_id: uuid.UUID) -> None:
+    """Re-run normalization for every message group (incl. the legacy whole-email
+    group) that still has a pending payment (R23). Each such group's pending,
+    rejected and duplicate rows are superseded so the group is read afresh; a group
+    that already has a posted row (approved / already recorded) is refused."""
     email = session.get(Email, email_id)
     if email is None:
         raise ReviewError("email not found")
-    pending = list(
-        session.scalars(
-            select(Extraction).where(
-                Extraction.email_id == email_id, Extraction.status == "pending_review"
-            )
-        )
-    )
-    if not pending:
+    rows = list(session.scalars(select(Extraction).where(Extraction.email_id == email_id)))
+    groups = {r.email_message_id for r in rows if r.status == "pending_review"}
+    if not groups:
         raise ReviewError("nothing to reprocess — no pending extraction for this email")
-    already_approved = session.scalar(
-        select(func.count())
-        .select_from(Extraction)
-        .where(Extraction.email_id == email_id, Extraction.status == "approved")
-    )
-    if already_approved:
+    affected = [r for r in rows if r.email_message_id in groups]
+    if any(r.status in ("approved", "already_recorded") for r in affected):
         raise ReviewError(
-            "cannot reprocess — this email already has an approved payment; "
-            "reject the pending one instead if it needs correcting"
+            "cannot reprocess — this email already has an approved payment (or one marked "
+            "already recorded) from the same message; reject the pending one instead if it "
+            "needs correcting"
         )
-    for ext in pending:
-        ext.status = "superseded"
+    for ext in affected:
+        if ext.status in ("pending_review", "rejected", "duplicate"):
+            ext.status = "superseded"
     email.status = "classified"
     email.error_detail = None
     session.flush()

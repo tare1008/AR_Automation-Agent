@@ -20,8 +20,13 @@ def is_recorded(ext: Extraction) -> bool:
 
 
 def message_is_recorded(session: Session, message_id: uuid.UUID) -> bool:
+    # superseded rows were replaced by a reprocess: they say nothing either way
     rows = list(
-        session.scalars(select(Extraction).where(Extraction.email_message_id == message_id))
+        session.scalars(
+            select(Extraction).where(
+                Extraction.email_message_id == message_id, Extraction.status != "superseded"
+            )
+        )
     )
     return bool(rows) and all(is_recorded(r) for r in rows)
 

@@ -237,7 +237,7 @@ def bulk_already_recorded_action(
             ids.append(uuid.UUID(raw))
         except ValueError:
             continue
-    n = mark_already_recorded(session, ids, user)
+    n = mark_already_recorded(session, ids, user, skip_linked=True)
     return RedirectResponse(
         f"/review/queue?flash={quote(f'{n} marked already recorded')}", status_code=303
     )
@@ -601,10 +601,14 @@ def already_recorded_action(
     user: User = Depends(require_user),
     session: Session = Depends(get_db),
 ) -> Response:
-    from ar_pipeline.review.service import mark_already_recorded, next_pending_after
+    from ar_pipeline.review.service import ReviewError, mark_already_recorded, next_pending_after
 
     planned = next_pending_after(session, extraction_id)
-    if mark_already_recorded(session, [extraction_id], user) == 0:
+    try:
+        marked = mark_already_recorded(session, [extraction_id], user)
+    except ReviewError as exc:
+        return RedirectResponse(f"/review/{extraction_id}?flash={quote(str(exc))}", status_code=303)
+    if marked == 0:
         flash = quote("Only historical payments can be marked already recorded")
         return RedirectResponse(f"/review/{extraction_id}?flash={flash}", status_code=303)
     return _to_next_item(session, planned, "Marked already recorded")

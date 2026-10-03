@@ -146,3 +146,17 @@ def test_newest_message_after_go_live_is_not_historical(db_session):
     x = _row(db_session, _email(db_session, "h3"))
     apply_history(db_session, x, None, newest_content_position=None)
     assert x.historical_reason is None and x.validation_flags == []
+
+
+def test_flag_prefix_constants_keep_their_wording():
+    from ar_pipeline.threads import dedupe
+
+    assert dedupe.FLAG_REFERENCE == "header: reference "
+    assert dedupe.FLAG_POSSIBLE_DUPLICATE == "header: possible duplicate"
+    assert dedupe.FLAG_REJECTED_BEFORE == "header: rejected before"
+    assert dedupe.FLAG_HISTORICAL == "header: historical —"
+    assert dedupe.KEY_FLAG_PREFIXES == (
+        dedupe.FLAG_REFERENCE,
+        dedupe.FLAG_POSSIBLE_DUPLICATE,
+        dedupe.FLAG_REJECTED_BEFORE,
+    )
