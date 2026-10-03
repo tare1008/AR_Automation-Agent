@@ -26,6 +26,9 @@ _REF_RE = re.compile(
 _AMOUNT_RE = re.compile(
     r"(?<!\d[./])\b\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?\b|(?<![\d.])\d+\.\d{2}(?![.\d])"
 )
+# currency-marked plain integer ("Rs 50000", "INR 50000", "₹50000", "$4250"); bare numbers
+# such as invoice ids never count. Grouped/decimal amounts are left to _AMOUNT_RE.
+_MARKED_AMOUNT_RE = re.compile(r"(?i:\brs\.?|\binr|₹|\$)[ \t]*\d{3,}(?!\d|[,.]\d)")
 _BANK_TYPES = {"utr", "rtgs", "neft", "imps"}
 _DOC_TYPES = {"payer_document", "request_number"}
 
@@ -39,8 +42,18 @@ def find_references(text: str) -> set[str]:
     return {r for r in refs if any(c.isdigit() for c in r) and len(r) >= 8}
 
 
+def flatten_text(body_text: str) -> str:
+    """Collapse line breaks and ``>`` quote prefixes (a quoted copy re-wraps lines)."""
+    return re.sub(r"\s*\n[\s>]*", " ", body_text or "")
+
+
+def amount_occurrences(flat: str) -> int:
+    return len(_AMOUNT_RE.findall(flat)) + len(_MARKED_AMOUNT_RE.findall(flat))
+
+
 def has_payment_signal(text: str, tables: list[list[list[str]]] | None = None) -> bool:
-    if find_references(text) or _AMOUNT_RE.search(text or ""):
+    flat = flatten_text(text)
+    if find_references(flat) or _AMOUNT_RE.search(flat) or _MARKED_AMOUNT_RE.search(flat):
         return True
     for table in tables or []:
         for row in table:

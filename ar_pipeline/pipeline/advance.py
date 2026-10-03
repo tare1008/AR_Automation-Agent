@@ -47,11 +47,14 @@ from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.service import normalize_one
 from ar_pipeline.storage import BlobStore, attachment_blob_key
 from ar_pipeline.threads.memory import all_references_recorded, find_seen_by_fingerprint
-from ar_pipeline.threads.references import find_references, has_payment_signal
+from ar_pipeline.threads.references import (
+    amount_occurrences,
+    find_references,
+    flatten_text,
+    has_payment_signal,
+)
 from ar_pipeline.threads.splitter import (
     MessagePart,
-    distinct_amounts,
-    flatten_text,
     split_email,
 )
 
@@ -189,7 +192,7 @@ def _references_recorded_rule(session: Session, p: MessagePart) -> bool:
         return False
     flat = flatten_text(p.body_text)
     refs = find_references(flat)
-    if not refs or len(distinct_amounts(flat)) > len(refs):
+    if not refs or amount_occurrences(flat) > len(refs):
         return False
     return all_references_recorded(session, refs)
 
@@ -276,10 +279,12 @@ def _classify(session: Session, email: Email, blob_store: BlobStore) -> str:
         text = m.body_text or ""
         if has_numeric_table_rows(tables):
             specs.append((SourceSpec("body_table", "body"), m.id))
-        elif has_payment_signal(text, tables) or (
-            not (m.carries_attachments and live_attachment)
-            and len(re.sub(r"\s+", "", text)) >= BODY_TEXT_MIN_CHARS
-            and any(ch.isdigit() for ch in text)
+        elif not (m.carries_attachments and live_attachment) and (
+            has_payment_signal(text, tables)
+            or (
+                len(re.sub(r"\s+", "", text)) >= BODY_TEXT_MIN_CHARS
+                and any(ch.isdigit() for ch in text)
+            )
         ):
             specs.append((SourceSpec("body_text", "body"), m.id))
     if not any(not s.skipped for s, _ in specs):

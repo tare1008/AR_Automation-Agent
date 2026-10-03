@@ -19,7 +19,12 @@ from datetime import UTC, datetime, timedelta, timezone
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
 from ar_pipeline.extract.html_table import table_rows
-from ar_pipeline.threads.references import _AMOUNT_RE, find_references, has_payment_signal
+from ar_pipeline.threads.references import (
+    _AMOUNT_RE,
+    find_references,
+    flatten_text,
+    has_payment_signal,
+)
 
 _BLOCK_TAGS = {
     "p", "div", "tr", "li", "table", "blockquote", "h1", "h2", "h3", "h4", "h5",
@@ -93,11 +98,6 @@ class _Boundary:
     end: int
     sender: str | None
     sent: str | None
-
-
-def flatten_text(body_text: str) -> str:
-    """Collapse line breaks and ``>`` quote prefixes (a quoted copy re-wraps lines)."""
-    return re.sub(r"\s*\n[\s>]*", " ", body_text or "")
 
 
 def distinct_amounts(flat: str) -> set[str]:

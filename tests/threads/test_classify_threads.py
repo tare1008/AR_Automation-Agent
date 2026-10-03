@@ -315,3 +315,52 @@ def test_reforward_with_short_external_note_is_done(db_session, tmp_path):
     _run(db_session, tmp_path)
     db_session.refresh(second)
     assert second.status == "done"
+
+
+# ---- fix round 2 (R17-R19) -------------------------------------------------------------------
+
+from ar_pipeline.threads.references import has_payment_signal  # noqa: E402
+
+
+def test_cover_note_with_live_attachment_gets_only_the_attachment_source(db_session, tmp_path):
+    e = _text_email(db_session, "Please find attached payment advice for Rs 1,20,000.00.", "c-1")
+    _attach(db_session, e, name="advice.xlsx", ctype="application/vnd.ms-excel.sheet.macroEnabled")
+    _run(db_session, tmp_path)
+    srcs = db_session.scalars(
+        select(ExtractionSource).where(ExtractionSource.email_id == e.id)
+    ).all()
+    live = [s.kind for s in srcs if not s.skipped]
+    assert live == ["excel"]
+
+
+def _seen_quote_plus(db_session, tmp_path, note, mid):
+    first = _text_email(db_session, PAY, mid + "a")
+    _record(db_session, first)
+    second = _text_email(db_session, note + "\n" + _quoted(PAY, note=""), mid + "b")
+    _run(db_session, tmp_path)
+    db_session.refresh(second)
+    return second
+
+
+def test_wrapped_reference_note_gets_a_source(db_session, tmp_path):
+    e = _seen_quote_plus(db_session, tmp_path, "Paid vide UTR\nSBIN12345678 against inv 7.", "w1")
+    assert e.status == "classified"
+
+
+def test_currency_marked_integer_note_gets_a_source(db_session, tmp_path):
+    e = _seen_quote_plus(db_session, tmp_path, "Paid Rs 50000 today against inv 7.", "w2")
+    assert e.status == "classified"
+
+
+def test_payment_signal_ignores_bare_numbers():
+    assert not has_payment_signal("Invoice 55 dated 7")
+    assert not has_payment_signal("inv 7 and ref 123456")
+    for t in ("Rs.50000", "INR 50000", "₹50000", "$4250"):
+        assert has_payment_signal(t), t
+
+
+def test_reference_rule_counts_amount_occurrences(db_session):
+    _refs_record(db_session, "utr:SBIN44444444")
+    body = "Paid Rs 50,000.00 vide UTR SBIN44444444 and another Rs 50,000.00 by cheque today"
+    e = _text_email(db_session, _quoted(body), "occ-1")
+    assert all(m.status != "seen" for m in _ensure_messages(db_session, e, []))
