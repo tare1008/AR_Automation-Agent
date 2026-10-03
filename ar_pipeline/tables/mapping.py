@@ -15,6 +15,7 @@ from ar_pipeline.tables.models import ColumnAssignment, MappingOutput
 from ar_pipeline.tables.numbers import parse_amount, parse_date
 
 MIN_DATA_ROWS = 6
+_HEADER_SCAN = 5  # the header is looked for in a table's first five non-blank rows
 _REQUIRED = {"invoice_number", "amount_paid"}
 _TOTAL_RE = re.compile(r"^\s*(?:sub\s*|grand\s*)?total\b|^\s*net\s*payable", re.I)
 _SUBTOTAL_RE = re.compile(r"^\s*sub\s*total\b", re.I)
@@ -55,14 +56,30 @@ def _numeric_share(rows: list[list[str]], col: int) -> float:
     return hits / len(rows) if rows else 0.0
 
 
+def _is_header(row: list[str]) -> bool:
+    filled = [c for c in row if c.strip()]
+    return (
+        len(filled) >= 3
+        and 2 * len(filled) >= len(row)
+        and all(parse_amount(c) is None for c in filled)
+    )
+
+
+def _header_at(rows: list[list[str]]) -> int | None:
+    """The header is the first of the first rows that reads like column names;
+    banner rows above it (a sheet title, "In case of …") are not the header."""
+    return next((i for i, r in enumerate(rows[:_HEADER_SCAN]) if _is_header(r)), None)
+
+
 def find_line_table(raws: list[dict]) -> LineTable | None:
     found: list[LineTable] = []
     for si, raw in enumerate(raws):
         for ti, table in enumerate(raw.get("tables") or []):
             rows = [[str(c) for c in r] for r in table if any(str(c).strip() for c in r)]
-            if len(rows) < 2 or len(rows[0]) < 3:
+            at = _header_at(rows)
+            if at is None:
                 continue
-            header, body = rows[0], rows[1:]
+            header, body = rows[at], rows[at + 1 :]
             total = None
             last = -1
             for bi, r in enumerate(body):
@@ -196,6 +213,8 @@ def apply_mapping(table: LineTable, cols: ColumnMap) -> MappedTable:
         other = _abs(_get(row, cols, "other_deduction"))
         if gross is None and paid is None and adj == 0:
             continue  # a heading or note row
+        if not number and not any((gross, paid, tds, adj, other)):
+            continue  # blank padding: no number and every figure blank or zero
         day = parse_date(_get(row, cols, "invoice_date"))
         negative = (paid is not None and paid < 0) or (gross is not None and gross < 0)
         if negative or ((gross is None or gross == 0) and adj > 0):

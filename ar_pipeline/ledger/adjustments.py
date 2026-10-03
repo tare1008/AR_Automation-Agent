@@ -66,6 +66,10 @@ def match_adjustment(number: str, same: list[str], ledger: list[str]) -> Adjustm
     return AdjustmentMatch(None, near[:_LIMIT])
 
 
+def _has_adjustments(payload: RemittancePayload) -> bool:
+    return any(li.kind == "adjustment" for li in payload.line_items)
+
+
 def _pools(session: Session, payload: RemittancePayload) -> tuple[list[str], list[str]]:
     same = [
         li.invoice_number
@@ -78,6 +82,8 @@ def _pools(session: Session, payload: RemittancePayload) -> tuple[list[str], lis
 
 def resolve_adjustments(session: Session, payload: RemittancePayload) -> RemittancePayload:
     """Fill ``applies_to`` where exactly one invoice matches by digits."""
+    if not _has_adjustments(payload):
+        return payload
     same, ledger = _pools(session, payload)
     lines = []
     for line in payload.line_items:
@@ -98,6 +104,8 @@ def adjustment_suggestions(session: Session, payload: RemittancePayload, index: 
 
 
 def adjustment_flags(session: Session, payload: RemittancePayload) -> list[str]:
+    if not _has_adjustments(payload):
+        return []
     same, ledger = _pools(session, payload)
     known = {number_key(n) for n in same + ledger}
     currency = payload.header.currency

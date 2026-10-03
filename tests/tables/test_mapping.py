@@ -188,3 +188,25 @@ def test_negative_gross_with_positive_net_is_adjustment():
     mapped = apply_mapping(_table(header, rows), keyword_mapping(header))
     assert mapped.lines[-1].kind == "adjustment"
     assert mapped.lines[-1].amount_paid == Decimal("-500")
+
+
+def test_blank_zero_padding_rows_are_not_lines():
+    header = ["Bill No", "Gross Amount", "TDS", "Net Payment"]
+    rows = [[f"B{i}", "10.00", "0", "10.00"] for i in range(6)]
+    rows += [["", "0", "0", "0"], ["", "", "0", ""], ["", "0.00", "", "0"]]
+    mapped = apply_mapping(_table(header, rows), keyword_mapping(header))
+    assert [li.invoice_number for li in mapped.lines] == [f"B{i}" for i in range(6)]
+
+
+def test_banner_rows_above_the_header_are_dropped():
+    header = ["Bill No", "Gross Amount", "TDS", "Net Payment"]
+    rows = [[f"B{i}", "10.00", "0", "10.00"] for i in range(6)]
+    banner = ["In case of payment against invoices", "", "", ""]
+    table = find_line_table([{"text": "", "tables": [[banner, header, *rows]]}])
+    assert table is not None
+    assert table.header == header and len(table.rows) == 6
+
+
+def test_table_without_a_header_row_is_skipped():
+    rows = [[f"B{i}", "10.00", "0", "10.00"] for i in range(8)]
+    assert find_line_table([{"text": "", "tables": [rows]}]) is None

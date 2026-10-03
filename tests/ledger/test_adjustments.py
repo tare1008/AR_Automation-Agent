@@ -161,3 +161,10 @@ def test_posting_adjustments_is_idempotent(db_session, seed_extraction):
     assert post_extraction(db_session, ext) == 2
     assert post_extraction(db_session, ext) == 0
     assert db_session.query(InvoicePayment).count() == 2
+
+
+def test_no_adjustment_lines_means_no_query():
+    payload = RemittancePayload.model_validate(_payload())
+    # session=None: any DB query would raise
+    assert resolve_adjustments(None, payload) == payload  # type: ignore[arg-type]
+    assert adjustment_flags(None, payload) == []  # type: ignore[arg-type]

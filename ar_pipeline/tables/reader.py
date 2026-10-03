@@ -23,6 +23,7 @@ from ar_pipeline.normalize.prompt import (
     MAPPING_SYSTEM_PROMPT,
     build_header_message,
     build_mapping_message,
+    header_message_truncated,
     system_prompt_for,
 )
 from ar_pipeline.tables.mapping import (
@@ -130,7 +131,8 @@ def read_by_table(
             )
         else:
             touch_mapping(session, signature)
-        return TableRead(
-            out, payments, {"path": "table", "mapping": origin, "document_totals": document}
-        )
+        info: dict = {"path": "table", "mapping": origin, "document_totals": document}
+        if header_message_truncated(sender, subject, raws, table):
+            info["header_truncated"] = True
+        return TableRead(out, payments, info)
     return None

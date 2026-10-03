@@ -145,9 +145,8 @@ def build_mapping_message(table: LineTable) -> str:
     return "\n".join(lines)
 
 
-def build_header_message(
-    sender_address: str, subject: str, raw_extractions: list[dict], table: LineTable
-) -> str:
+def _header_extractions(raw_extractions: list[dict], table: LineTable) -> list[dict]:
+    """The sources with the line table cut to its header, three rows and its total."""
     trimmed: list[dict] = []
     for si, raw in enumerate(raw_extractions):
         tables = list(raw.get("tables") or [])
@@ -160,7 +159,20 @@ def build_header_message(
                 shown.append(table.total_row)
             tables[table.table_index] = shown
         trimmed.append({**raw, "tables": tables})
-    return build_user_message(sender_address, subject, trimmed)
+    return trimmed
+
+
+def build_header_message(
+    sender_address: str, subject: str, raw_extractions: list[dict], table: LineTable
+) -> str:
+    return build_user_message(sender_address, subject, _header_extractions(raw_extractions, table))
+
+
+def header_message_truncated(
+    sender_address: str, subject: str, raw_extractions: list[dict], table: LineTable
+) -> bool:
+    """True when ``build_header_message`` would cut this material at the length cap."""
+    return is_truncated(sender_address, subject, _header_extractions(raw_extractions, table))
 
 
 def _render(sender_address: str, subject: str, raw_extractions: list[dict]) -> str:

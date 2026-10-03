@@ -115,7 +115,7 @@ def _normalize_group(
     read_info: dict
     if read is not None:
         out, payments, read_info = read.output, read.payments, read.read_info
-        truncated = False
+        truncated = bool(read_info.get("header_truncated"))
     else:
         out, payments = normalize_email(
             email_id=str(email.id),

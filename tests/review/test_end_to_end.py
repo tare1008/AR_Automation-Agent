@@ -12,6 +12,7 @@ from ar_pipeline.normalize.normalizer import NormalizerOutput, PaymentDraft
 from ar_pipeline.pipeline.advance import advance_once
 from ar_pipeline.schema.canonical import LineItem
 from ar_pipeline.storage import LocalBlobStore
+from ar_pipeline.tables.models import MappingOutput
 from tests.extract.vision_fake import FakeVisionExtractor
 from tests.fixtures.loader import load_email
 from tests.normalize.llm_fake import FakeLLMClient
@@ -42,7 +43,9 @@ def test_fixture_flows_through_review_to_delivery(client, db_session, tmp_path):
     email = load_email("02_fwd_body_table", db_session, store)
     vision = FakeVisionExtractor()
     for _ in range(3):
-        advance_once(db_session, store, vision, FakeLLMClient(response=_output()))
+        # 02's body table is a line table: decline the mapping so the full-AI read runs
+        llm = FakeLLMClient(responses=[MappingOutput(is_line_table=False), _output()])
+        advance_once(db_session, store, vision, llm)
 
     ext = db_session.scalars(select(Extraction).where(Extraction.email_id == email.id)).one()
     assert ext.status == "pending_review"

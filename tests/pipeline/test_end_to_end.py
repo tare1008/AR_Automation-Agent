@@ -61,7 +61,7 @@ def _haystack(session, email_id) -> str:
     return "\n".join(parts)
 
 
-TABLE_FIXTURES = {"06_direct_excel"}
+TABLE_FIXTURES = {"02_fwd_body_table", "06_direct_excel"}
 
 
 @pytest.mark.parametrize("name", FIXTURE_NAMES)
@@ -79,8 +79,9 @@ def test_fixture_flows_to_review(name, db_session, tmp_path):
     haystack = _haystack(db_session, email.id)
     assert MARKERS[name] in haystack, f"{name}: marker not found in {haystack!r}"
 
-    # 06's spreadsheet holds a line table, so the table reader asks for a mapping first;
-    # declining it sends the email down the full-AI read this test drives.
+    # 02's body table and 06's spreadsheet hold a line table (each under a banner row),
+    # so the table reader asks for a mapping first; declining it sends the email down
+    # the full-AI read this test drives.
     responses: list = [_generic_output()]
     if name in TABLE_FIXTURES:
         responses.insert(0, MappingOutput(is_line_table=False))
