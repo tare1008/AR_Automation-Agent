@@ -19,10 +19,6 @@ from ar_pipeline.ledger.matching import near_matches, number_key, payers_differ
 from ar_pipeline.ledger.money import format_money
 from ar_pipeline.schema.canonical import RemittancePayload
 
-# "draft N: schema validation failed: …" flags come from the normalizer about
-# drafts that never became a payload, so re-validating the payload can't
-# reproduce them — keep them.
-
 
 def _is_duplicate(session: Session, invoice: Invoice, reference: str, amount_paid: Decimal) -> bool:
     return (
