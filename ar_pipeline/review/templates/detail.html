@@ -153,6 +153,12 @@
       <button type="submit" class="btn-danger">Reject</button>
     </form>
 
+    {% if view.extraction.historical_reason %}
+    <form method="post" action="/review/{{ view.extraction.id }}/already-recorded" class="stack">
+      <button type="submit" class="btn-quiet">Already recorded in our books</button>
+    </form>
+    {% endif %}
+
     <button type="button" class="btn-quiet" data-open-dialog="reprocessConfirm">Reprocess (re-run extraction)</button>
 
     {% if view.edits %}

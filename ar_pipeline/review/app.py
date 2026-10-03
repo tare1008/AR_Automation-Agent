@@ -223,6 +223,26 @@ def queue_rows_fragment(
     return _render(request, "_queue_rows.html", rows=list_pending(session))
 
 
+@router.post("/bulk-already-recorded")
+def bulk_already_recorded_action(
+    extraction_id: list[str] = Form(default=[]),
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import mark_already_recorded
+
+    ids = []
+    for raw in extraction_id:
+        try:
+            ids.append(uuid.UUID(raw))
+        except ValueError:
+            continue
+    n = mark_already_recorded(session, ids, user)
+    return RedirectResponse(
+        f"/review/queue?flash={quote(f'{n} marked already recorded')}", status_code=303
+    )
+
+
 @router.post("/bulk-reject")
 def bulk_reject_action(
     extraction_id: list[str] = Form(default=[]),
@@ -553,6 +573,21 @@ def use_invoice_action(
     return RedirectResponse(
         f"/review/{extraction_id}?flash={quote(f'Using {number}')}", status_code=303
     )
+
+
+@router.post("/{extraction_id}/already-recorded")
+def already_recorded_action(
+    extraction_id: uuid.UUID,
+    user: User = Depends(require_user),
+    session: Session = Depends(get_db),
+) -> Response:
+    from ar_pipeline.review.service import mark_already_recorded, next_pending_after
+
+    planned = next_pending_after(session, extraction_id)
+    if mark_already_recorded(session, [extraction_id], user) == 0:
+        flash = quote("Only historical payments can be marked already recorded")
+        return RedirectResponse(f"/review/{extraction_id}?flash={flash}", status_code=303)
+    return _to_next_item(session, planned, "Marked already recorded")
 
 
 @router.post("/{extraction_id}/reprocess")

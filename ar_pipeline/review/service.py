@@ -30,6 +30,9 @@ from ar_pipeline.pipeline.routing import approve_and_queue, settle_email
 from ar_pipeline.review.auth import User
 from ar_pipeline.review.forms import FieldEdit, canonical_diff
 from ar_pipeline.schema.canonical import RemittancePayload
+from ar_pipeline.threads.dedupe import assign_payment_key
+from ar_pipeline.threads.memory import KEY_LIVE
+from ar_pipeline.threads.references import payment_key_for
 
 
 class ReviewError(Exception):
@@ -53,6 +56,7 @@ class QueueRow:
     is_remittance: bool
     confidence: Decimal | None
     validation_flags: list[str]
+    historical_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +128,10 @@ def _extraction_outcome(ext: Extraction) -> str:
         return "awaiting review"
     if ext.status == "rejected":
         return "rejected"
+    if ext.status == "already_recorded":
+        return "already recorded"
+    if ext.status == "duplicate":
+        return "duplicate"
     return "superseded"
 
 
@@ -398,6 +406,37 @@ def bulk_reject_not_remittance(
     return rejected
 
 
+def mark_already_recorded(session: Session, extraction_ids: list[uuid.UUID], user: User) -> int:
+    """Historical payments the client already has in their books: post them to the
+    invoice ledger (balances stay true) but never deliver them (no double-posting)."""
+    from ar_pipeline.ledger.posting import post_extraction
+
+    done = 0
+    for extraction_id in extraction_ids:
+        ext = session.get(Extraction, extraction_id)
+        if (
+            ext is None
+            or ext.status != "pending_review"
+            or not ext.is_remittance
+            or not ext.canonical
+            or ext.historical_reason is None
+        ):
+            continue
+        ext.status = "already_recorded"
+        ext.reviewed_by = user.name
+        ext.reviewed_at = func.now()
+        env = ext.canonical.get("envelope")
+        if isinstance(env, dict):
+            ext.canonical["envelope"] = {**env, "reviewed_by": user.name}
+        session.flush()
+        post_extraction(session, ext)
+        email = session.get(Email, ext.email_id)
+        assert email is not None
+        settle_email(session, email)
+        done += 1
+    return done
+
+
 def list_pending(session: Session) -> list[QueueRow]:
     rows = session.execute(
         select(Extraction, Email)
@@ -422,6 +461,7 @@ def list_pending(session: Session) -> list[QueueRow]:
                 is_remittance=ext.is_remittance,
                 confidence=ext.confidence,
                 validation_flags=list(ext.validation_flags or []),
+                historical_reason=ext.historical_reason,
             )
         )
     return out
@@ -548,6 +588,33 @@ def save_edits(
         {"header": stored.get("header", {}), "line_items": stored.get("line_items", [])},
         {"header": normalised["header"], "line_items": normalised["line_items"]},
     )
+    key_fields = (
+        "payment_reference",
+        "payment_reference_type",
+        "payer_name",
+        "payment_date",
+        "total_paid_amount",
+    )
+    old_header = stored.get("header", {}) or {}
+    new_header = normalised["header"]
+    key_changed = any(old_header.get(f) != new_header.get(f) for f in key_fields)
+    if key_changed:
+        # read-only conflict check BEFORE anything is written, so a refused edit
+        # leaves the row exactly as it was
+        found = payment_key_for(normalised)
+        if found is not None and found[1] == "strong":
+            other = session.scalar(
+                select(Extraction)
+                .where(
+                    Extraction.payment_key == found[0],
+                    Extraction.payment_key_strength == "strong",
+                    Extraction.status.in_(KEY_LIVE),
+                    Extraction.id != ext.id,
+                )
+                .limit(1)
+            )
+            if other is not None:
+                raise ReviewError(f"that reference already belongs to payment {other.id}")
     for path, old, new in edits:
         session.add(
             ExtractionEdit(
@@ -562,6 +629,12 @@ def save_edits(
     ext.canonical = normalised
     ext.validation_flags = validate_payload(payload) + check_against_ledger(session, payload)
     session.flush()
+    if key_changed:
+        ext.payment_key = None
+        ext.payment_key_strength = None
+        ext.duplicate_of_id = None
+        session.flush()
+        assign_payment_key(session, ext)
 
     if approve:
         new_flags = [f for f in ext.validation_flags if f not in shown]

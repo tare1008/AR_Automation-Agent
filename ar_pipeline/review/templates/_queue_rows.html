@@ -1,6 +1,7 @@
 {% if not rows %}<p>Nothing waiting for review.</p>{% endif %}
 {% if rows %}
 {% set junk = rows|rejectattr("is_remittance")|list %}
+{% set history = rows|selectattr("historical_reason")|list %}
 {% if junk %}
 <form method="post" action="/review/bulk-reject" id="bulkRejectForm" class="bulk-bar">
   <label class="bulk-reason">Reason
@@ -10,18 +11,25 @@
   <span class="bulk-note">Only items marked &ldquo;not a remittance&rdquo; can be rejected in bulk &mdash; real payments are always reviewed one by one.</span>
 </form>
 {% endif %}
+{% if history %}
+<form method="post" action="/review/bulk-already-recorded" id="bulkRecordedForm" class="bulk-bar">
+  <button type="submit">Mark selected as already recorded</button>
+  <span class="bulk-note">Only historical payments (earlier messages or before go-live) can be marked. They are added to the invoice ledger but never sent to your system again.</span>
+</form>
+{% endif %}
 <div class="table-wrap">
 <table>
   <thead><tr>
-    {% if junk %}<th class="select-col"><span class="sr-only">Select</span></th>{% endif %}
+    {% if junk or history %}<th class="select-col"><span class="sr-only">Select</span></th>{% endif %}
     <th>Received</th><th>From</th><th>Subject</th><th>Payment</th>
     <th>Confidence</th><th>Flags</th><th></th>
   </tr></thead>
   <tbody>
   {% for r in rows %}
   <tr>
-    {% if junk %}<td class="select-col">
+    {% if junk or history %}<td class="select-col">
       {% if not r.is_remittance %}<input type="checkbox" name="extraction_id" value="{{ r.extraction_id }}" form="bulkRejectForm" aria-label="Select {{ r.subject }}">{% endif %}
+      {% if r.historical_reason %}<input type="checkbox" name="extraction_id" value="{{ r.extraction_id }}" form="bulkRecordedForm" aria-label="Mark {{ r.subject }} already recorded">{% endif %}
     </td>{% endif %}
     <td>{{ r.received_at.strftime("%Y-%m-%d %H:%M") }}</td>
     <td class="truncate" title="{{ r.sender_address }}">{{ r.sender_address }}</td>
