@@ -43,6 +43,9 @@ def _embedded_pg():
     os.environ["AUTO_APPROVE_MIN_CONFIDENCE"] = "0"
     os.environ["MAILBOX_PROVIDER"] = "graph"
     os.environ["BACKEND_URL"] = ""
+    os.environ["CLIENT_DOMAINS"] = ""
+    os.environ["CLIENT_NAMES"] = ""
+    os.environ["GO_LIVE_DATE"] = ""
 
     from ar_pipeline.config import get_settings
     from ar_pipeline.db.base import reset_engine

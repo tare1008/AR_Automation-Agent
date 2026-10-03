@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.mutable import MutableDict, MutableList
@@ -33,7 +34,15 @@ EMAIL_STATUSES = (
     "done",
     "error",
 )
-EXTRACTION_STATUSES = ("pending_review", "approved", "rejected", "superseded")
+EXTRACTION_STATUSES = (
+    "pending_review",
+    "approved",
+    "rejected",
+    "superseded",
+    "already_recorded",
+    "duplicate",
+)
+MESSAGE_STATUSES = ("new", "seen", "no_content", "failed")
 DELIVERY_STATUSES = ("pending", "delivered", "failed")
 INVOICE_SOURCES = ("books", "email")
 
@@ -69,6 +78,7 @@ class Email(Base):
     body_html: Mapped[str] = mapped_column(Text, default="")
     body_text: Mapped[str] = mapped_column(Text, default="")
     raw_headers: Mapped[dict] = mapped_column(MutableDict.as_mutable(JSONB), default=dict)
+    thread_key: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     error_detail: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -78,6 +88,35 @@ class Email(Base):
     __table_args__ = (
         UniqueConstraint("internet_message_id", name="uq_email_internet_message_id"),
         CheckConstraint(_in("status", EMAIL_STATUSES), name="ck_email_status"),
+    )
+
+
+class EmailMessage(Base):
+    """One message found inside an email's body (a quoted reply or forward is
+    its own message). Only ``new`` messages are sent to the AI."""
+
+    __tablename__ = "email_message"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("email.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    sender: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    raw_header: Mapped[str] = mapped_column(Text, default="")
+    is_internal: Mapped[bool] = mapped_column(default=False)
+    carries_attachments: Mapped[bool] = mapped_column(default=False)
+    body_text: Mapped[str | None] = mapped_column(Text)
+    tables: Mapped[list | None] = mapped_column(JSONB)
+    fingerprint: Mapped[str | None] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="new")
+    seen_reason: Mapped[str | None] = mapped_column(String(30))
+    seen_in_message_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("email_message.id"))
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(_in("status", MESSAGE_STATUSES), name="ck_email_message_status"),
+        UniqueConstraint("email_id", "position", name="uq_email_message_position"),
     )
 
 
@@ -102,6 +141,9 @@ class ExtractionSource(Base):
     email_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("email.id"), index=True)
     kind: Mapped[str] = mapped_column(String(20))
     ref: Mapped[str] = mapped_column(Text)  # 'body' or attachment id
+    email_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("email_message.id"), index=True
+    )
     skipped: Mapped[bool] = mapped_column(default=False)
     skip_reason: Mapped[str | None] = mapped_column(Text)
 
@@ -140,9 +182,26 @@ class Extraction(Base):
     reviewed_by: Mapped[str | None] = mapped_column(String(320))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reject_reason: Mapped[str | None] = mapped_column(Text)
+    email_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("email_message.id"), index=True
+    )
+    payment_key: Mapped[str | None] = mapped_column(Text)
+    payment_key_strength: Mapped[str | None] = mapped_column(String(10))
+    historical_reason: Mapped[str | None] = mapped_column(String(30))
+    duplicate_of_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("extraction.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
+        Index(
+            "ux_extraction_payment_key",
+            "payment_key",
+            unique=True,
+            postgresql_where=text(
+                "payment_key_strength = 'strong' AND "
+                "status IN ('pending_review', 'approved', 'already_recorded')"
+            ),
+        ),
+        Index("ix_extraction_payment_key", "payment_key"),
         CheckConstraint(_in("status", EXTRACTION_STATUSES), name="ck_extraction_status"),
         CheckConstraint(
             "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",

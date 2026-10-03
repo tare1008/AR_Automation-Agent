@@ -1,6 +1,8 @@
+from datetime import date
 from functools import lru_cache
+from typing import Any
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +46,25 @@ class Settings(BaseSettings):
     llm_provider: str = "anthropic"
     llm_model: str = "claude-opus-5"
     auto_approve_min_confidence: float = 0.0
+
+    # Threads: who "we" are (internal forwards, payer-vs-beneficiary) and the
+    # cut-off before which payments are treated as already-recorded history.
+    client_domains: str = ""
+    client_names: str = ""
+    go_live_date: date | None = None
+
+    @field_validator("go_live_date", mode="before")
+    @classmethod
+    def _blank_go_live_is_none(cls, v: Any) -> Any:
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
+    def client_domain_list(self) -> list[str]:
+        return [d.strip().lower() for d in self.client_domains.split(",") if d.strip()]
+
+    def client_name_list(self) -> list[str]:
+        return [n.strip() for n in self.client_names.split(",") if n.strip()]
 
     poll_interval_seconds: int = 300
     advance_interval_seconds: int = 60
