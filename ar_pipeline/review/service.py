@@ -25,16 +25,12 @@ from ar_pipeline.db.models import (
     ExtractionSource,
     RawExtraction,
 )
-from ar_pipeline.ledger.checks import check_against_ledger
-from ar_pipeline.normalize.service import TRUNCATED_FLAG
-from ar_pipeline.normalize.validators import validate_payload
+from ar_pipeline.normalize.recheck import recheck
 from ar_pipeline.pipeline.routing import approve_and_queue, settle_email
 from ar_pipeline.review.auth import User
 from ar_pipeline.review.forms import FieldEdit, canonical_diff
 from ar_pipeline.schema.canonical import RemittancePayload
 from ar_pipeline.threads.dedupe import (
-    FLAG_HISTORICAL,
-    KEY_FLAG_PREFIXES,
     assign_payment_key,
     lock_payment_key,
 )
@@ -670,15 +666,7 @@ def save_edits(
         )
     shown = list(ext.validation_flags or [])
     ext.canonical = normalised
-    kept = [
-        f
-        for f in shown
-        if f == TRUNCATED_FLAG
-        or f.startswith(FLAG_HISTORICAL)
-        or (not key_changed and f.startswith(KEY_FLAG_PREFIXES))
-    ]
-    recomputed = validate_payload(payload) + check_against_ledger(session, payload)
-    ext.validation_flags = kept + [f for f in recomputed if f not in kept]
+    ext.validation_flags = recheck(session, ext, payload, key_changed=key_changed)
     session.flush()
     if key_changed:
         ext.payment_key = None

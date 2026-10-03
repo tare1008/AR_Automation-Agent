@@ -24,17 +24,16 @@ from sqlalchemy.orm import Session
 
 from ar_pipeline.config import get_settings
 from ar_pipeline.db.models import Email, EmailMessage, Extraction, ExtractionSource, RawExtraction
-from ar_pipeline.ledger.checks import check_against_ledger
 from ar_pipeline.normalize.llm_client import LLMClient
 from ar_pipeline.normalize.normalizer import normalize_email
 from ar_pipeline.normalize.prompt import PROMPT_VERSION, is_truncated
+from ar_pipeline.normalize.recheck import TRUNCATED_FLAG, context_flags
 from ar_pipeline.pipeline.routing import AUTO_REVIEWER, approve_and_queue, settle_email
 from ar_pipeline.schema.canonical import RemittancePayload
 from ar_pipeline.threads.dedupe import apply_history, assign_payment_key
 
 __all__ = ["normalize_one"]
 
-TRUNCATED_FLAG = "header: content was truncated — check nothing is missing"
 _LIVE = ("pending_review", "approved", "rejected", "already_recorded", "duplicate")
 _LEGACY_ORDER = 10**6  # emails classified before threads: whole email, processed first
 
@@ -181,7 +180,7 @@ def _route(
         # routing decision, so a payment approved earlier in this loop already
         # counts toward the invoice balance (spec §2 "Re-check at approval").
         payload = RemittancePayload.model_validate(row.canonical)
-        row.validation_flags = list(row.validation_flags) + check_against_ledger(session, payload)
+        row.validation_flags = list(row.validation_flags) + context_flags(session, row, payload)
         session.flush()
         if (
             threshold > 0
