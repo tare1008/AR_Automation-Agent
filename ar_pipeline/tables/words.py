@@ -9,13 +9,35 @@ from decimal import Decimal
 _UNITS = {
     w: i
     for i, w in enumerate(
-        "zero one two three four five six seven eight nine ten eleven twelve thirteen "
-        "fourteen fifteen sixteen seventeen eighteen nineteen".split()
+        [
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen",
+        ]
     )
 }
 _TENS = {
     w: 10 * (i + 2)
-    for i, w in enumerate("twenty thirty forty fifty sixty seventy eighty ninety".split())
+    for i, w in enumerate(
+        ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
+    )
 }
 _SCALES = {
     "thousand": 10**3,
