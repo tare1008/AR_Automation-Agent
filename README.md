@@ -62,6 +62,7 @@ protocol with Entra ID OIDC — no route changes.
 | `tick [--repeat N]` | Run the pipeline-advance and delivery jobs once (or N times), synchronously — step a demo instead of waiting on the 60 s background scheduler. |
 | `status` | Print emails / extractions / deliveries grouped by state. |
 | `ledger-backfill` | Post already-approved payments into the invoice ledger, then re-check pending items' flags. Safe to re-run. |
+| `threads-backfill` | Give rows created before email threads their message rows and payment keys; flags clashes. Run once after the migration; safe to re-run. |
 
 ## Invoice ledger
 
@@ -82,6 +83,19 @@ safe: `outstanding_amount` is read as the ERP's view, which already includes the
 payments this pipeline delivered, so they aren't counted twice. If the export
 lags delivery, outstanding reads high until the next upload. A blank
 `outstanding_amount` leaves an existing invoice's earlier-paid figure as it was.
+
+## Email threads
+
+A forwarded chain is split into its individual messages and each is read once,
+oldest first. A message whose text was already processed is marked "seen before"
+and not re-read, and the same payment arriving twice is caught by its payment
+reference. Payments from older messages in a chain, or dated before `GO_LIVE_DATE`,
+are marked historical and never auto-sent; if the payment is already in your books,
+use **Already recorded** in review. Set `CLIENT_DOMAINS` / `CLIENT_NAMES` (see
+`.env.example`) so internal forwards and payer vs beneficiary are told apart.
+
+Rolling it out on an existing database: `uv run python scripts/dev_db.py migrate`
+→ `uv run ar-pipeline threads-backfill` → `uv run ar-pipeline ledger-backfill`.
 
 ## Local demo (no Microsoft 365, no deployment)
 

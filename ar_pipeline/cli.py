@@ -11,6 +11,8 @@ Subcommands:
 * ``status`` — print a summary of emails, extractions and deliveries by state.
 * ``ledger-backfill`` — post every already-approved payment into the invoice
   ledger (safe to re-run).
+* ``threads-backfill`` — give rows created before threads their message rows and
+  payment keys (run once after migration 0005; safe to re-run).
 
 All commands use the configured ``DATABASE_URL`` / ``BLOB_DIR``.
 """
@@ -167,6 +169,19 @@ def _cmd_ledger_backfill() -> int:
     return 0
 
 
+def _cmd_threads_backfill() -> int:
+    from ar_pipeline.db.base import get_session
+    from ar_pipeline.threads import backfill as backfill_module
+
+    with get_session() as session:
+        created, keyed, conflicts = backfill_module.backfill(session)
+    print(
+        f"{created} message row(s) created, {keyed} payment key(s) assigned, "
+        f"{conflicts} conflict(s) flagged"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ar-pipeline", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -189,6 +204,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="one-time OAuth sign-in for MAILBOX_PROVIDER=gmail",
     )
     sub.add_parser("ledger-backfill", help="post already-approved payments into the invoice ledger")
+    sub.add_parser(
+        "threads-backfill",
+        help="assign payment keys and thread messages to rows created before threads",
+    )
     return parser
 
 
@@ -211,6 +230,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_gmail_login()
     if args.command == "ledger-backfill":
         return _cmd_ledger_backfill()
+    if args.command == "threads-backfill":
+        return _cmd_threads_backfill()
     return 2  # unreachable: subparser is required
 
 

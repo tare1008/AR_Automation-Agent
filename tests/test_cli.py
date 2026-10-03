@@ -164,3 +164,12 @@ def test_readme_documents_the_invoice_ledger_rollout():
     assert "alembic upgrade head" in section
     assert "ar-pipeline ledger-backfill" in section
     assert "invoice_number" in section and "outstanding_amount" in section
+
+
+def test_threads_backfill_command(wired, capsys, monkeypatch):
+    monkeypatch.setattr("ar_pipeline.threads.backfill.backfill", lambda session: (3, 2, 1))
+    from ar_pipeline.cli import main
+
+    assert main(["threads-backfill"]) == 0
+    out = capsys.readouterr().out
+    assert "3 message row(s) created, 2 payment key(s) assigned, 1 conflict(s) flagged" in out

@@ -126,3 +126,26 @@ def test_one_failed_message_does_not_block_its_siblings(db_session, tmp_path, se
     assert [m.status for m in msgs] == ["no_content", "new", "failed"]
     assert "boom" in (msgs[2].error_detail or "")
     assert len(_rows(db_session, e)) == 1
+
+
+class _CountingLLM:
+    def __init__(self, inner):
+        self.inner = inner
+        self.calls = 0
+
+    def parse(self, **kwargs):
+        self.calls += 1
+        return self.inner.parse(**kwargs)
+
+
+def test_offline_stub_rehearsal_reads_only_new_messages(db_session, tmp_path, settings_env):
+    from ar_pipeline.normalize.stub_client import StubLLMClient
+
+    llm = _CountingLLM(StubLLMClient())
+    _ingest(db_session, chain_html([2, 1]), "t5a")
+    _run(db_session, tmp_path, llm)
+    assert llm.calls == 2
+    llm.calls = 0
+    _ingest(db_session, chain_html([3, 2, 1]), "t5b")
+    _run(db_session, tmp_path, llm)
+    assert llm.calls == 1
