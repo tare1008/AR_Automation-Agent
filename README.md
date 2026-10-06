@@ -173,12 +173,3 @@ curl -s localhost:9000/remittances/<extraction-id> | jq   # the payload the back
 
 If a delivery fails (e.g. stub backend down), it shows on the review UI's
 Errors tab with a **Resend** button.
-
-### Sharing with a teammate
-
-Give them the repo (it clones and runs — `pgserver` brings Postgres). Do
-**not** send `.env` or the `samples/` emails through git: `.env` is
-per-machine, and `samples/` is gitignored because it holds real client
-PII. If a teammate needs the real sample emails, send those `.eml` files
-directly (encrypted). The committed `tests/fixtures/emails/*.eml` are
-enough for a full demo.
