@@ -364,7 +364,7 @@ th.select-col, td.select-col { width: 2.5rem; text-align: center; }
 .summary .ok-count { color: var(--good); }
 /* Flags read as sentences, so they're a list, not pills */
 .flag-list { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .3rem; }
-.flag-list li { background: var(--warn-bg); color: var(--warn); border-left: 3px solid var(--warn);
+.flag-list li { background: var(--warn-bg); color: var(--warn);
   border-radius: var(--radius-sm); padding: .35rem .7rem; font-size: .88rem; font-weight: 600; }
 .flag-list.compact { margin: 0; gap: .2rem; }
 .flag-list.compact li { font-size: .78rem; padding: .2rem .5rem; }
