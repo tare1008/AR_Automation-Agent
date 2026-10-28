@@ -61,6 +61,9 @@ class QueueRow:
     confidence: Decimal | None
     validation_flags: list[str]
     historical_reason: str | None = None
+    payer_name: str | None = None
+    total_paid: str | None = None
+    currency: str = "INR"
 
 
 @dataclass(frozen=True)
@@ -487,8 +490,12 @@ def list_pending(session: Session) -> list[QueueRow]:
     multi = _multi_payment_email_ids(session, {email.id for _, email in rows})
     out: list[QueueRow] = []
     for ext, email in rows:
-        env = ext.canonical.get("envelope") if isinstance(ext.canonical, dict) else None
+        canonical = ext.canonical if isinstance(ext.canonical, dict) else {}
+        env = canonical.get("envelope")
         idx = env.get("payment_index", 0) if isinstance(env, dict) else 0
+        raw_header = canonical.get("header")
+        header: dict = raw_header if isinstance(raw_header, dict) else {}
+        total = header.get("total_paid_amount")
         out.append(
             QueueRow(
                 extraction_id=ext.id,
@@ -502,6 +509,9 @@ def list_pending(session: Session) -> list[QueueRow]:
                 confidence=ext.confidence,
                 validation_flags=list(ext.validation_flags or []),
                 historical_reason=ext.historical_reason,
+                payer_name=(header.get("payer_name") or None),
+                total_paid=str(total) if total not in (None, "") else None,
+                currency=str(header.get("currency") or "INR"),
             )
         )
     return out

@@ -47,7 +47,8 @@
     } else if (t.classList.contains("adddeduction")) {
       var scope = t.dataset.scope;
       var box = document.querySelector('.deductions[data-scope="' + scope + '"]');
-      var proto = document.querySelector(".dedrow");
+      var tpl = document.getElementById("dedrowTemplate");
+      var proto = tpl ? tpl.content.querySelector(".dedrow") : document.querySelector(".dedrow");
       if (!box || !proto) return;
       var d = proto.cloneNode(true);
       d.querySelectorAll("input").forEach(function (i) { i.value = ""; });

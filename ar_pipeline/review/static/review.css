@@ -196,7 +196,11 @@ label { font-size: .85rem; }
 fieldset { border: 1px solid var(--border); border-radius: var(--radius); margin: .75rem 0; padding: .75rem 1rem 1rem; }
 fieldset.flagged { border: 1.5px solid var(--warn); }
 legend { font-weight: 700; font-size: .82rem; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); padding: 0 .3rem; }
-fieldset label { display: grid; gap: .25rem; margin-bottom: .6rem; font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .02em; color: var(--text-muted); }
+fieldset label { display: grid; gap: .25rem; margin-bottom: .6rem; font-weight: 600; font-size: .85rem; color: var(--text-muted); }
+.dedrow { display: grid; grid-template-columns: minmax(9rem, 1.2fr) minmax(6rem, .8fr) minmax(8rem, 1.5fr) auto; gap: .5rem; align-items: end; margin-bottom: .4rem; }
+.dedrow label { margin-bottom: 0; }
+.dedrow .removededuction { padding: .45rem .6rem; }
+@media (max-width: 560px) { .dedrow { grid-template-columns: 1fr 1fr; } }
 fieldset input[type="text"] { font-weight: 400; text-transform: none; letter-spacing: normal; font-size: .95rem; color: var(--text); }
 .field-flag {
   margin: 0 0 .6rem; padding: .3rem .6rem; background: var(--warn-bg); color: var(--warn);
@@ -288,9 +292,12 @@ button.is-loading { opacity: .7; cursor: progress; pointer-events: none; }
 
 .detail { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
 .pane { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; overflow: auto; max-height: 80vh; background: var(--surface); box-shadow: var(--shadow-sm); }
-iframe.original { width: 100%; height: 50vh; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
+/* sized for a typical remittance email; drag the corner for a long one */
+.original-wrap { height: 18rem; max-height: 70vh; min-height: 8rem; resize: vertical; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; }
+iframe.original { width: 100%; height: 100%; border: 0; display: block; }
 .rowactions { display: flex; gap: .5rem; margin-top: .75rem; }
-pre.raw { white-space: pre-wrap; font: .8rem/1.5 var(--font-mono); background: var(--surface-muted); color: var(--text); padding: .75rem; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+pre.raw { max-height: 50vh; overflow: auto; white-space: pre-wrap; font: .8rem/1.5 var(--font-mono); background: var(--surface-muted); color: var(--text); padding: .75rem; border-radius: var(--radius-sm); border: 1px solid var(--border); }
 
 .meta { color: var(--text-muted); font-size: .9rem; margin: .1rem 0 .75rem; }
 
@@ -345,3 +352,20 @@ th.select-col, td.select-col { width: 2.5rem; text-align: center; }
 .ledger-strip .ledger-note { flex-basis: 100%; color: var(--warn); font-weight: 600; }
 
 .lineitem legend { font-variant-numeric: tabular-nums; }
+
+/* Review screen: what this payment is, before the form */
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: .5rem 1rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: .7rem 1rem; margin: 0 0 .75rem; box-shadow: var(--shadow-sm); }
+.summary > div { display: grid; gap: .1rem; min-width: 0; }
+.summary .label { font-size: .75rem; color: var(--text-muted); font-weight: 600; }
+.summary strong { font-size: 1rem; overflow-wrap: anywhere; }
+.summary .flag-count { color: var(--warn); }
+.summary .ok-count { color: var(--good); }
+/* Flags read as sentences, so they're a list, not pills */
+.flag-list { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .3rem; }
+.flag-list li { background: var(--warn-bg); color: var(--warn); border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm); padding: .35rem .7rem; font-size: .88rem; font-weight: 600; }
+.flag-list.compact { margin: 0; gap: .2rem; }
+.flag-list.compact li { font-size: .78rem; padding: .2rem .5rem; }
+td .sub { color: var(--text-muted); font-size: .8rem; }

@@ -1,17 +1,29 @@
 {% extends "base.html" %}
+{% set DEDUCTION_TYPES = [("tds","TDS"),("credit_note","Credit note"),("debit_note","Debit note"),
+    ("advance_adjustment","Advance adjustment"),("discount","Discount"),("rounding","Rounding"),("other","Other")] %}
+{% set FIELD_LABELS = {"payer_name": "Payer", "payer_id": "Payer code", "payment_reference": "Reference",
+    "payment_reference_type": "Reference type", "payment_date": "Payment date", "payment_method": "Method",
+    "currency": "Currency", "total_paid_amount": "Total paid", "invoice_number": "Invoice no.",
+    "invoice_date": "Invoice date", "invoice_amount": "Invoice amount", "amount_paid": "Amount paid"} %}
 {% macro deduction_row(scope, idx, d) %}
-<span class="dedrow">
-  <select name="{{ scope }}.deductions[{{ idx }}].type" aria-label="Deduction type">
-    {% for t in ["tds","credit_note","debit_note","advance_adjustment","discount","rounding","other"] %}
-    <option value="{{ t }}"{% if d and d.get("type")==t %} selected{% endif %}>{{ t }}</option>
-    {% endfor %}
-  </select>
-  <input type="text" name="{{ scope }}.deductions[{{ idx }}].amount" aria-label="Deduction amount"
-         placeholder="amount" value="{{ d.get('amount') if d and d.get('amount') is not none else '' }}">
-  <input type="text" name="{{ scope }}.deductions[{{ idx }}].reason" aria-label="Deduction reason"
-         placeholder="reason" value="{{ d.get('reason') if d and d.get('reason') is not none else '' }}">
-  <button type="button" class="removededuction" aria-label="Remove this deduction">&times;</button>
-</span>
+<div class="dedrow">
+  <label>Deduction
+    <select name="{{ scope }}.deductions[{{ idx }}].type">
+      {% for value, text in DEDUCTION_TYPES %}
+      <option value="{{ value }}"{% if d and d.get("type")==value %} selected{% endif %}>{{ text }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Amount
+    <input type="text" name="{{ scope }}.deductions[{{ idx }}].amount" inputmode="decimal"
+           value="{{ d.get('amount') if d and d.get('amount') is not none else '' }}">
+  </label>
+  <label>Reason
+    <input type="text" name="{{ scope }}.deductions[{{ idx }}].reason" placeholder="optional"
+           value="{{ d.get('reason') if d and d.get('reason') is not none else '' }}">
+  </label>
+  <button type="button" class="removededuction btn-quiet" aria-label="Remove this deduction">Remove</button>
+</div>
 {% endmacro %}
 {% block title %}{{ view.email.subject }} — AR Review by MLDeep Systems{% endblock %}
 {% block content %}
@@ -25,8 +37,20 @@
    <span class="badge">auto-approve bar: {{ "%.2f"|format(auto_approve_threshold) }}</span>
    {% endif %}
 </p>
+{% if view.extraction.is_remittance and canonical %}
+{% set sh = canonical.get("header", {}) %}
+{% set lines = canonical.get("line_items") or [] %}
+{% set adj_count = lines|selectattr("kind", "equalto", "adjustment")|list|length %}
+<div class="summary">
+  <div><span class="label">Payer</span><strong>{{ sh.get("payer_name") or "Not found" }}</strong></div>
+  <div><span class="label">Total paid</span><strong class="num">{% if sh.get("total_paid_amount") not in (none, "") %}{{ sh.get("total_paid_amount")|money(sh.get("currency") or "INR") }}{% else %}—{% endif %}</strong></div>
+  <div><span class="label">Lines</span><strong>{{ lines|length - adj_count }} invoice{{ "s" if lines|length - adj_count != 1 }}{% if adj_count %} · {{ adj_count }} adjustment{{ "s" if adj_count != 1 }}{% endif %}</strong></div>
+  <div><span class="label">Reference</span><strong>{{ sh.get("payment_reference") or "None" }}</strong></div>
+  <div><span class="label">Flags</span><strong class="{{ 'flag-count' if view.extraction.validation_flags else 'ok-count' }}">{{ view.extraction.validation_flags|length or "None" }}</strong></div>
+</div>
+{% endif %}
 {% if view.extraction.validation_flags %}
-<p role="alert">{% for f in view.extraction.validation_flags %}<span class="badge warn">{{ f }}</span> {% endfor %}</p>
+<ul class="flag-list" role="alert">{% for f in view.extraction.validation_flags %}<li>{{ f[8:] if f.startswith("header: ") else f }}</li>{% endfor %}</ul>
 {% endif %}
 {% if view.extraction.historical_reason == "earlier_message" %}<span class="badge warn">Historical: earlier message</span>{% elif view.extraction.historical_reason == "before_go_live" %}<span class="badge warn">Historical: before go-live</span>{% endif %}
 {% if view.extraction.duplicate_of_id %}<a class="badge" href="/review/{{ view.extraction.duplicate_of_id }}">Linked to payment {{ view.extraction.duplicate_of_id|string|truncate(8, True, "") }}…</a>{% endif %}
@@ -44,7 +68,7 @@
         ({{ view.message.sender or "unknown sender" }}). <a href="/review/email/{{ view.email.id }}">Show full thread</a></p>
       <pre class="raw">{{ view.message.raw_header }}{{ view.message.body_text or "" }}</pre>
     {% elif safe_body_html %}
-      <iframe class="original" sandbox srcdoc="{{ safe_body_html }}"></iframe>
+      <div class="original-wrap"><iframe class="original" sandbox srcdoc="{{ safe_body_html }}" title="Original email"></iframe></div>
     {% else %}
       <pre class="raw">{{ view.email.body_text }}</pre>
     {% endif %}
@@ -82,7 +106,7 @@
         {% set h = canonical.get("header", {} ) %}
         {% for f in ["payer_name","payer_id","payment_reference","payment_reference_type",
                      "payment_date","payment_method","currency","total_paid_amount"] %}
-        <label>{{ f }}
+        <label>{{ FIELD_LABELS[f] }}
           <input type="text" name="header.{{ f }}" value="{{ h.get(f) if h.get(f) is not none else '' }}">
         </label>
         {% endfor %}
@@ -119,7 +143,7 @@
                 Which invoice does it reduce?
                 {% for number in led.adjustment_suggestions %}
                 <button type="submit" form="useAdjustment{{ li_idx }}_{{ loop.index0 }}" class="btn-quiet">Use {{ number }}</button>
-                {% else %}Type it in "reduces invoice" below.{% endfor %}
+                {% else %}Type it in "Reduces invoice" below.{% endfor %}
               {% endif %}
             {% elif led.invoice_id %}
               <a href="/review/invoices/{{ led.invoice_id }}">{{ led.invoice_number }}</a>
@@ -139,12 +163,12 @@
           </div>
           {% endif %}
           {% if li.get("kind") == "adjustment" %}
-          <label>reduces invoice
+          <label>Reduces invoice
             <input type="text" name="line_items[{{ li_idx }}].applies_to" value="{{ li.get('applies_to') or '' }}">
           </label>
           {% endif %}
           {% for f in ["invoice_number","invoice_date","invoice_amount","amount_paid"] %}
-          <label>{{ f }}
+          <label>{% if f == "invoice_number" and li.get("kind") == "adjustment" %}Adjustment no.{% else %}{{ FIELD_LABELS[f] }}{% endif %}
             <input type="text" name="line_items[{{ li_idx }}].{{ f }}"
                    value="{{ li.get(f) if li.get(f) is not none else '' }}">
           </label>
@@ -162,6 +186,7 @@
       {% endfor %}
       </div>
       <button type="button" id="addline">+ line item</button>
+      <template id="dedrowTemplate">{{ deduction_row("header", 0, none) }}</template>
 
       <div class="rowactions">
         <button type="submit" name="approve" value="0">Save</button>
