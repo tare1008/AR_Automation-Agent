@@ -152,10 +152,12 @@ button:hover, .btn:hover { background: var(--surface-muted); }
 button:focus-visible, .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
   outline: 2px solid var(--focus); outline-offset: 2px;
 }
-button[type="submit"], .btn-primary {
+/* :where() keeps the submit default at element specificity, so any class
+   below (.btn-approve, .btn-danger, .btn-quiet, .linkbtn) still wins. */
+button:where([type="submit"]), .btn-primary {
   background: var(--brand-fill); border-color: var(--brand-fill); color: #fff;
 }
-button[type="submit"]:hover, .btn-primary:hover {
+button:where([type="submit"]):hover, .btn-primary:hover {
   background: var(--brand-fill-hover); border-color: var(--brand-fill-hover);
 }
 /* Ships data to the backend — kept visually distinct from a routine Save. */
@@ -183,6 +185,7 @@ button[type="submit"]:hover, .btn-primary:hover {
 /* forms */
 form.inline { display: inline; }
 form.stack { display: grid; gap: 1rem; max-width: 22rem; }
+form.stack > button { justify-self: start; }
 .field { display: grid; gap: .3rem; }
 .field span { font-size: .78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; }
 input[type="text"], input[type="password"], select {
@@ -301,7 +304,7 @@ pre.raw { white-space: pre-wrap; font: .8rem/1.5 var(--font-mono); background: v
 .auth-card h1 { margin-bottom: .3rem; }
 .auth-card p.lede { margin-bottom: 1.4rem; font-size: .88rem; }
 .auth-card form.stack { max-width: none; margin-bottom: 0; }
-.auth-card button[type="submit"] { padding: .6rem; font-size: .9rem; }
+.auth-card button[type="submit"] { padding: .6rem; font-size: .9rem; justify-self: stretch; }
 .auth-card .error { margin-bottom: 1rem; }
 
 /* info dialog */
