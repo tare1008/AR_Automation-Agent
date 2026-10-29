@@ -1,0 +1,1 @@
+One forwarded email, six payments buried inside, and a 20-line payment advice that has to add up to the rupee. AR Automation Agent reads every remittance in your AR inbox, splits the thread, copies each row, checks it against the document's own total, and only asks a person when something's off.

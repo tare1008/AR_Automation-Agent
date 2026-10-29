@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AR Automation Agent</title>
+<style>
+  :root {
+    --bg: #faf8f4; --surface: #fffcf8; --surface-muted: #f4eee6;
+    --border: #e6dfd2; --border-strong: #cbc2b3;
+    --text: #211d17; --text-muted: #655e54; --text-faint: #7d7364;
+    --brand: #7f3f00; --brand-strong: #5c2e00; --brand-soft: #fbe9d9; --brand-fill: #994b00;
+    --good: #1f6f45; --good-bg: #e6f2ea; --warn: #7a5e00; --warn-bg: #faf1d6;
+    --bad: #a63b26; --bad-bg: #fbe6e1;
+    --shadow-md: 0 10px 40px rgba(40, 30, 15, .12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+  body { font-family: "Noto Sans", sans-serif; color: var(--text); }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+    background: radial-gradient(1200px 700px at 70% 30%, #fff6ec 0%, var(--bg) 60%); }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  .cap { position: absolute; left: 150px; top: 120px; width: 1620px; }
+  .cap .l { font-size: 64px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.12; color: var(--text); }
+  .cap .l.b { color: var(--brand); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow-md); }
+  .badge { display: inline-block; font-size: 22px; font-weight: 700; padding: 4px 14px; border-radius: 999px;
+    border: 1px solid var(--border-strong); color: var(--text-muted); background: var(--surface); }
+  .badge.ok { background: var(--good-bg); color: var(--good); border-color: transparent; }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  .mono { font-family: "DejaVu Sans Mono", monospace; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* scene 1: forwarded email */
+  #mail { position: absolute; left: 360px; top: 330px; width: 1200px; padding: 34px 44px; }
+  #mail .from { font-size: 28px; color: var(--text-muted); }
+  #mail .subj { font-size: 42px; font-weight: 750; margin-top: 6px; }
+  .quote { margin-top: 12px; border-left: 4px solid var(--border-strong); padding: 6px 0 6px 18px; font-size: 27px; color: var(--text-muted);
+    display: flex; justify-content: space-between; gap: 20px; }
+  .quote b { color: var(--brand); font-weight: 750; }
+
+  /* scene 2: title */
+  #title { position: absolute; left: 0; right: 0; top: 400px; text-align: center; }
+  #title .name { font-size: 132px; font-weight: 800; letter-spacing: -0.035em; color: var(--brand); }
+  #title .sub { font-size: 48px; font-weight: 600; color: var(--text-muted); margin-top: 18px; }
+  #title .by { font-size: 26px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 18px; font-weight: 700; }
+
+  /* scene 3: thread messages */
+  #thread { position: absolute; left: 150px; top: 330px; width: 1620px; padding: 26px 34px; }
+  #thread h3, #adv h3, #rev h3, #done h3 { margin: 0 0 14px; font-size: 26px; color: var(--text-muted); font-weight: 700; }
+  .trow { display: grid; grid-template-columns: 70px 1fr 300px 330px; align-items: center; padding: 14px 18px; border-radius: 12px;
+    font-size: 26px; border-bottom: 1px solid var(--border); }
+  .trow .pos { color: var(--text-faint); font-weight: 700; }
+  .trow .amt { font-weight: 700; text-align: right; padding-right: 40px; }
+  .trow.new { background: var(--brand-soft); border-bottom-color: transparent; }
+  #calls { position: absolute; right: 150px; top: 250px; font-size: 26px; font-weight: 700; color: var(--brand);
+    background: var(--brand-soft); padding: 10px 22px; border-radius: 999px; }
+
+  /* scene 4: advice table */
+  #adv { position: absolute; left: 150px; top: 285px; width: 1620px; padding: 18px 28px; }
+  .arow { display: grid; grid-template-columns: 340px 190px 270px 250px 200px 270px; font-size: 20px; line-height: 1.3; padding: 3px 10px;
+    border-bottom: 1px solid var(--border); }
+  .arow.h { font-size: 17px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #fff; background: var(--brand-fill);
+    border-radius: 8px; border: 0; padding: 8px 10px; }
+  .arow .r { text-align: right; }
+  .arow.adj { color: var(--text-muted); }
+  .arow .k { display: inline-block; font-size: 15px; font-weight: 800; color: var(--warn); background: var(--warn-bg); border-radius: 999px;
+    padding: 0 9px; margin-left: 10px; vertical-align: 2px; }
+  #totals { margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 18px;
+    background: var(--surface-muted); border-radius: 12px; font-size: 25px; }
+  #totals .w { font-size: 18px; color: var(--text-faint); }
+  #match { font-size: 26px; }
+
+  /* scene 5: review */
+  #rev { position: absolute; left: 330px; top: 330px; width: 1260px; padding: 30px 38px; }
+  #rev .legend { font-size: 30px; font-weight: 800; }
+  #rev .legend span { color: var(--warn); }
+  .flag { margin: 14px 0; padding: 12px 16px; background: var(--warn-bg); color: var(--warn); border-radius: 10px; font-size: 23px; font-weight: 600; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 14px 0; }
+  .field { border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 14px; font-size: 25px; }
+  .field small { display: block; font-size: 16px; color: var(--text-faint); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .strip { position: relative; background: var(--surface-muted); border-radius: 12px; padding: 16px 18px; font-size: 25px; color: var(--text-muted);
+    min-height: 74px; }
+  .strip .a, .strip .b { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; gap: 16px; }
+  .btn { font-size: 23px; font-weight: 700; color: var(--brand); border: 2px solid var(--brand); border-radius: 10px; padding: 6px 16px; background: var(--surface); }
+  #cursor { position: absolute; width: 34px; height: 34px; left: 0; top: 0; }
+
+  /* scene 6: delivered */
+  #done { position: absolute; left: 330px; top: 300px; width: 1260px; padding: 26px 34px; }
+  .drow { display: grid; grid-template-columns: 1fr 300px 200px; align-items: center; font-size: 27px; padding: 14px 6px; border-bottom: 1px solid var(--border); }
+  .drow .r { text-align: right; font-weight: 700; padding-right: 30px; }
+  #lock { position: absolute; left: 0; right: 0; top: 820px; text-align: center; }
+  #lock .n { font-size: 54px; font-weight: 800; color: var(--brand); letter-spacing: -0.02em; }
+  #lock .b { font-size: 24px; letter-spacing: .14em; text-transform: uppercase; color: var(--text-faint); font-weight: 700; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <section class="scene" id="s1">
+    <div class="cap"><div class="l" id="s1a">One forwarded email.</div><div class="l b" id="s1b">Six payments buried inside.</div></div>
+    <div class="card" id="mail">
+      <div class="from">From: Accounts team</div>
+      <div class="subj">FW: FW: RE: Payment Remittance details</div>
+      <div id="quotes"></div>
+    </div>
+  </section>
+
+  <section class="scene" id="s2">
+    <div id="title">
+      <div class="by">MLDeep Systems</div>
+      <div class="name">AR Automation Agent</div>
+      <div class="sub" id="s2sub">Reads every remittance in your AR inbox.</div>
+    </div>
+  </section>
+
+  <section class="scene" id="s3">
+    <div class="cap"><div class="l">Splits the thread.</div><div class="l b" id="s3b">Reads only what's new.</div></div>
+    <div id="calls">AI reads: 1 of 6 messages</div>
+    <div class="card" id="thread">
+      <h3>Messages in this thread</h3>
+      <div id="trows"></div>
+    </div>
+  </section>
+
+  <section class="scene" id="s4">
+    <div class="cap"><div class="l">Every row copied.</div><div class="l b" id="s4b">Checked against the document's own total.</div></div>
+    <div class="card" id="adv">
+      <div class="arow h"><span>Bill No</span><span>Bill Date</span><span class="r">Gross</span><span class="r">Adv/Debit</span><span class="r">TDS</span><span class="r">Net Payment</span></div>
+      <div id="arows"></div>
+      <div id="totals">
+        <div><div class="num"><b>Document</b> ₹68,09,764.78 &nbsp;·&nbsp; <b>Extracted</b> ₹68,09,764.78</div>
+          <div class="w">Sixty Eight Lakh Nine Thousand Seven Hundred Sixty Four Rupees Seventy Eight Paise</div></div>
+        <span class="badge ok" id="match">Totals match the document</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="s5">
+    <div class="cap"><div class="l">Anything doubtful</div><div class="l b">waits for a person.</div></div>
+    <div class="card" id="rev">
+      <div class="legend">Line 10 <span>· Adjustment</span></div>
+      <div class="flag" id="flag">line 10: adjustment of ₹4,100.00, did you mean CBB25100035016?</div>
+      <div class="fields">
+        <div class="field mono"><small>Adjustment no.</small>2510035016DISCO</div>
+        <div class="field num"><small>Debit note</small>₹4,100.00</div>
+      </div>
+      <div class="strip">
+        <div class="a" id="stripA">Which invoice does it reduce? <span class="btn" id="usebtn">Use CBB25100035016</span></div>
+        <div class="b" id="stripB"><span class="badge ok">Matched</span> Reduces <b style="color:var(--text)">CBB25100035016</b> · invoice in this payment</div>
+      </div>
+    </div>
+    <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2l15 9-6.5 1.6L9.6 19z" fill="#211d17" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>
+  </section>
+
+  <section class="scene" id="s6">
+    <div class="cap"><div class="l">Clean payments go</div><div class="l b">straight to your books.</div></div>
+    <div class="card" id="done">
+      <h3>Delivered to your system</h3>
+      <div id="drows"></div>
+    </div>
+    <div id="lock"><div class="n">AR Automation Agent</div><div class="b">by MLDeep Systems</div></div>
+  </section>
+
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const easeOut = (x) => 1 - Math.pow(1 - clamp(x), 3);
+const easeInOut = (x) => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const prog = (t, start, dur) => easeOut((t - start) / dur);
+
+// fictional fixture data (invented test advice; no client data)
+const QUOTES = [
+  ["On 14 Jan, Continental wrote: remitted vide UTR CBBR5202601140031", "₹4,82,000.00"],
+  ["On 07 Jan, Continental wrote: remitted vide UTR CBBR5202601070019", "₹12,40,500.00"],
+  ["On 29 Dec, Continental wrote: remitted vide UTR CBBR5202512290044", "₹3,15,250.00"],
+  ["On 18 Dec, Continental wrote: remitted vide UTR CBBR5202512180027", "₹9,02,000.00"],
+  ["On 06 Dec, Continental wrote: remitted vide UTR CBBR5202512060012", "₹6,77,800.00"],
+  ["On 24 Nov, Continental wrote: remitted vide UTR CBBR5202511240038", "₹2,96,400.00"],
+];
+$("quotes").innerHTML = QUOTES.map(([a, b]) => `<div class="quote"><span>${a}</span><b class="num">${b}</b></div>`).join("");
+
+const TROWS = [
+  ["#0", "Continental · 20 Jan", "₹5,64,900.00", '<span class="badge ok">read</span>'],
+  ["#1", "Continental · 14 Jan", "₹4,82,000.00", '<span class="badge">seen before</span>'],
+  ["#2", "Continental · 07 Jan", "₹12,40,500.00", '<span class="badge">seen before</span>'],
+  ["#3", "Continental · 29 Dec", "₹3,15,250.00", '<span class="badge">seen before</span>'],
+  ["#4", "Continental · 18 Dec", "₹9,02,000.00", '<span class="badge">seen before</span>'],
+  ["#5", "Accounts team (forward note)", "", '<span class="badge">internal forward</span>'],
+];
+$("trows").innerHTML = TROWS.map(([p, s, a, b], i) =>
+  `<div class="trow ${i === 0 ? "new" : ""}" id="tr${i}"><span class="pos">${p}</span><span>${s}</span><span class="amt num">${a}</span><span>${b}</span></div>`).join("");
+
+const inv = (no, d, g, tds, net) => `<span class="mono">${no}</span><span>${d}</span><span class="r num">${g}</span><span class="r"></span><span class="r num">${tds}-</span><span class="r num">${net}</span>`;
+const adj = (no, d, a) => `<span class="mono">${no}<span class="k">adj</span></span><span>${d}</span><span class="r"></span><span class="r num">${a}</span><span class="r num">0.00</span><span class="r num">-${a}</span>`;
+const AROWS = [
+  [inv("CBB2510004583", "27.11.2025", "12,50,000.00", "1,250.00", "12,48,750.00"), ""],
+  [adj("2510004583DISCO", "27.11.2025", "12,500.00"), "adj"],
+  [adj("2510004516DISCO", "24.11.2025", "300.00"), "adj"],
+  [adj("2510004515DISCO", "24.11.2025", "11,200.00"), "adj"],
+  [adj("2510004431DISCO", "19.11.2025", "7,450.00"), "adj"],
+  [inv("CBB2510026174", "24.09.2025", "34,00,500.50", "3,400.50", "33,97,100.00"), ""],
+  [inv("CBB25100035016", "28.11.2025", "8,75,320.40", "875.32", "8,74,445.08"), ""],
+  [inv("CBB25100035015", "28.11.2025", "4,10,000.00", "410.00", "4,09,590.00"), ""],
+  [inv("CBB25100035014", "28.11.2025", "10,20,300.00", "1,020.30", "10,19,279.70"), ""],
+  [adj("2510035017DISCO", "28.11.2025", "9,800.00"), "adj"],
+  [adj("2510035016DISCO", "28.11.2025", "4,100.00"), "adj"],
+  [adj("2510035015DISCO", "28.11.2025", "2,250.00"), "adj"],
+  [adj("2510035014DISCO", "28.11.2025", "5,600.00"), "adj"],
+  [adj("2510031885DISCO", "05.11.2025", "3,300.00"), "adj"],
+  [adj("2510031884DISCO", "05.11.2025", "10,150.00"), "adj"],
+  [adj("2510031883DISCO", "05.11.2025", "29,900.00"), "adj"],
+];
+$("arows").innerHTML = AROWS.map(([h, c], i) => `<div class="arow ${c}" id="ar${i}">${h}</div>`).join("") +
+  `<div class="arow adj" id="armore"><span>+ 4 more rows, all read</span></div>`;
+
+const DROWS = [
+  ["Continental Bus Body Builders · 20 lines", "₹68,09,764.78"],
+  ["Continental Bus Body Builders · UTR …0031", "₹5,64,900.00"],
+  ["Continental Bus Body Builders · UTR …0042", "₹2,10,000.00"],
+];
+$("drows").innerHTML = DROWS.map(([a, b], i) =>
+  `<div class="drow" id="dr${i}"><span>${a}</span><span class="r num">${b}</span><span><span class="badge ok">Delivered</span></span></div>`).join("");
+
+// scene windows (seconds); every boundary sits on the 120 BPM grid (0.5s beats)
+const SCENES = [["s1", 0, 3], ["s2", 3, 6], ["s3", 6, 10], ["s4", 10, 14], ["s5", 14, 17], ["s6", 17, 20.5]];
+const IN = 0.35, OUT = 0.25;
+
+function show(el, p, dy = 24) {
+  el.style.opacity = p;
+  el.style.transform = `translateY(${(1 - p) * dy}px)`;
+}
+
+window.renderAt = function (t) {
+  for (const [id, a, b] of SCENES) {
+    const el = $(id);
+    if (t < a || t >= b) { el.style.opacity = 0; continue; }
+    const pin = clamp((t - a) / IN), pout = 1 - clamp((t - (b - OUT)) / OUT);
+    el.style.opacity = Math.min(easeOut(pin), easeInOut(pout));
+    el.style.transform = `translateY(${(1 - easeOut(pin)) * 18 - (1 - pout) * 18}px)`;
+  }
+
+  // s1
+  show($("s1a"), prog(t, 0.1, 0.35));
+  show($("s1b"), prog(t, 0.75, 0.35));
+  show($("mail"), prog(t, 0.0, 0.45), 60);
+  document.querySelectorAll("#quotes .quote").forEach((q, i) => {
+    const p = prog(t, 0.75 + i * 0.125, 0.3);
+    q.style.opacity = p; q.style.transform = `translateX(${(1 - p) * -30}px)`;
+    q.style.maxHeight = (p * 70) + "px"; q.style.overflow = "hidden";
+    q.style.marginTop = (p * 12) + "px"; q.style.paddingTop = q.style.paddingBottom = (p * 6) + "px";
+  });
+
+  // s2
+  const s2 = prog(t, 3.0, 0.5);
+  $("title").querySelector(".name").style.transform = `scale(${0.94 + 0.06 * s2})`;
+  show($("s2sub"), prog(t, 3.5, 0.4));
+
+  // s3
+  show($("s3b"), prog(t, 6.5, 0.35));
+  for (let i = 0; i < TROWS.length; i++) show($("tr" + i), prog(t, 6.25 + i * 0.125, 0.3), 20);
+  const glow = t > 7.5 ? 0.5 + 0.5 * Math.sin((t - 7.5) * Math.PI * 2) : 0;
+  $("tr0").style.boxShadow = `0 0 0 ${2 + glow * 4}px rgba(153,75,0,${0.25 + glow * 0.25})`;
+  show($("calls"), prog(t, 8.0, 0.35), 12);
+
+  // s4: rows on 16th notes (0.125s) from 10.5s
+  show($("s4b"), prog(t, 10.5, 0.35));
+  for (let i = 0; i < AROWS.length; i++) {
+    const p = prog(t, 10.5 + i * 0.125, 0.18);
+    const r = $("ar" + i); r.style.opacity = p; r.style.transform = `translateX(${(1 - p) * 24}px)`;
+  }
+  show($("armore"), prog(t, 12.5, 0.2), 8);
+  show($("totals"), prog(t, 12.5, 0.3), 14);
+  const m = clamp((t - 13.0) / 0.25);
+  $("match").style.opacity = m;
+  $("match").style.transform = `scale(${m < 1 ? 0.7 + 0.45 * easeOut(m) : 1 + 0.15 * Math.max(0, 1 - (t - 13.25) / 0.3)})`;
+
+  // s5: cursor glides to the button, clicks on the beat at 15.5s
+  const btn = $("usebtn").getBoundingClientRect();
+  const bx = btn.left + btn.width * 0.55, by = btn.top + btn.height * 0.6;
+  const c = easeInOut((t - 14.5) / 0.9);
+  const cx = 1700 + (bx - 1700) * c, cy = 980 + (by - 980) * c;
+  const press = t >= 15.5 && t < 15.65 ? 0.85 : 1;
+  $("cursor").style.transform = `translate(${cx}px, ${cy}px) scale(${press})`;
+  $("cursor").style.opacity = t < 14.3 ? 0 : (t > 16.4 ? clamp(1 - (t - 16.4) / 0.2) : 1);
+  $("usebtn").style.background = t >= 15.5 && t < 15.7 ? "var(--brand-soft)" : "var(--surface)";
+  const sw = clamp((t - 15.6) / 0.25);
+  $("stripA").style.opacity = 1 - sw;
+  show($("stripB"), sw, 0);
+  $("stripB").style.transform = `translateY(-50%) translateX(${(1 - easeOut(sw)) * 20}px)`;
+  $("flag").style.opacity = 1 - clamp((t - 15.7) / 0.3) * 0.65;
+  $("flag").style.textDecoration = t > 15.75 ? "line-through" : "none";
+
+  // s6
+  for (let i = 0; i < DROWS.length; i++) {
+    const p = prog(t, 17.25 + i * 0.25, 0.3);
+    const r = $("dr" + i); r.style.opacity = p; r.style.transform = `translateX(${(1 - p) * -40}px)`;
+  }
+  show($("lock"), prog(t, 18.0, 0.45), 20);
+};
+window.renderAt(0);
+</script>
+</body>
+</html>
